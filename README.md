@@ -9,6 +9,7 @@ export DATABASE_URL=postgres://osspilot:osspilot@127.0.0.1:5432/osspilot_ops?ssl
 go run ./cmd/migrate up
 go test ./...
 go run ./cmd/api
+go run ./cmd/worker   # 生命周期清理（读规则 + 设置里的 RGW；可用 LIFECYCLE_INTERVAL）
 ```
 
 - `GET /healthz`
@@ -19,7 +20,7 @@ go run ./cmd/api
 - `GET|POST /api/tenant-users`、`GET|PUT|DELETE /api/tenant-users/{user_id}`、`POST .../password/reset`（仅 platform_admin）
 - `GET|POST /api/buckets`、`POST /api/buckets/import-batch`（仅 platform_admin；不访问 RGW）
 - `GET|PUT /api/tenant-users/{user_id}/buckets`、`DELETE .../buckets/{bucket_id}`（授权并投影到租户 API）
-- `GET /api/lifecycle-rules`、`POST /api/buckets/{bucket_id}/lifecycle-rules`、`PUT|DELETE /api/lifecycle-rules/{rule_id}`（仅 platform_admin；只存规则，不跑清理任务）
+- `GET /api/lifecycle-rules`、`POST /api/buckets/{bucket_id}/lifecycle-rules`、`PUT|DELETE /api/lifecycle-rules/{rule_id}`（仅 platform_admin；`cmd/worker` 在 `lifecycle_cleanup_enabled` 时按规则扫 RGW 删除/abort）
 - `GET /api/ops/rgw/instances|stats`、`GET /api/ops/cluster/health|info`（登录即可；未配置 Ceph 管理 API 时 `available=false`）
 - `POST /api/ops/s3/test`（登录即可）、`POST /api/ops/rgw/restart`、`POST /api/ops/rgw/rolling-restart`（仅 platform_admin）
 - `GET /api/stats/overview|tenants/ranking|storage-classes|traffic|traffic/daily|performance|behavior/users|buckets/ranking|prefixes/ranking`（登录即可；对象用量与流量暂为 0）

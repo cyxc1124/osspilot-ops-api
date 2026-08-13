@@ -86,6 +86,22 @@ func (s *Store) List(ctx context.Context, bucketID, tenantID *int64) ([]Rule, er
 	return out, rows.Err()
 }
 
+func (s *Store) ListEnabled(ctx context.Context) ([]Rule, error) {
+	enabled := true
+	// reuse List with no filters then keep enabled — cheaper than another join shape
+	items, err := s.List(ctx, nil, nil)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]Rule, 0, len(items))
+	for _, r := range items {
+		if r.Enabled == enabled {
+			out = append(out, r)
+		}
+	}
+	return out, nil
+}
+
 func (s *Store) GetByID(ctx context.Context, id int64) (*Rule, error) {
 	u, err := scan(s.pool.QueryRow(ctx, `SELECT `+cols+` `+fromJoin+` WHERE r.id = $1`, id))
 	if err == pgx.ErrNoRows {
