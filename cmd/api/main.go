@@ -9,6 +9,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/cyxc1124/osspilot-ops-api/internal/accounts"
 	"github.com/cyxc1124/osspilot-ops-api/internal/auth"
 	"github.com/cyxc1124/osspilot-ops-api/internal/config"
 	"github.com/cyxc1124/osspilot-ops-api/internal/httpx"
@@ -17,7 +18,7 @@ import (
 	"github.com/cyxc1124/osspilot-ops-api/internal/users"
 )
 
-func newMux(authH *auth.Handler, usersH *users.Handler, regionH *regions.Handler, settingsH *settings.Handler) http.Handler {
+func newMux(authH *auth.Handler, usersH *users.Handler, regionH *regions.Handler, settingsH *settings.Handler, accountsH *accounts.Handler) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", healthz)
 	if authH != nil {
@@ -31,6 +32,9 @@ func newMux(authH *auth.Handler, usersH *users.Handler, regionH *regions.Handler
 	}
 	if settingsH != nil {
 		settingsH.Register(mux)
+	}
+	if accountsH != nil {
+		accountsH.Register(mux)
 	}
 	return httpx.CORS(mux)
 }
@@ -50,6 +54,7 @@ func main() {
 	var userStore *users.Store
 	var regionStore *regions.Store
 	var settingsStore *settings.Store
+	var accountStore *accounts.Store
 	if cfg.DatabaseURL != "" {
 		pool, err := pgxpool.New(context.Background(), cfg.DatabaseURL)
 		if err != nil {
@@ -61,6 +66,7 @@ func main() {
 		userStore = users.NewStore(pool)
 		regionStore = regions.NewStore(pool)
 		settingsStore = settings.NewStore(pool)
+		accountStore = accounts.NewStore(pool)
 	} else {
 		slog.Warn("DATABASE_URL unset; auth routes return 503")
 	}
@@ -79,9 +85,10 @@ func main() {
 		OfficeURL:         cfg.OfficeURL,
 		CephMgmtAPIURL:    cfg.CephMgmtAPIURL,
 	})
+	accountsH := accounts.NewHandler(accountStore, regionStore, authH.RequireAdmin)
 	addr := cfg.HTTPAddr
 	slog.Info("listen", "addr", addr)
-	if err := http.ListenAndServe(addr, newMux(authH, usersH, regionH, settingsH)); err != nil {
+	if err := http.ListenAndServe(addr, newMux(authH, usersH, regionH, settingsH, accountsH)); err != nil {
 		slog.Error("server", "err", err)
 		os.Exit(1)
 	}

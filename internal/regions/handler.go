@@ -55,7 +55,7 @@ type response struct {
 	S3RegionName string `json:"s3_region_name"`
 	IsDefault    bool   `json:"is_default"`
 	Status       string `json:"status"`
-	TenantCount  int    `json:"tenant_count"`
+	TenantCount  int64  `json:"tenant_count"`
 	CreatedAt    string `json:"created_at"`
 	UpdatedAt    string `json:"updated_at"`
 }
@@ -220,6 +220,10 @@ func (h *Handler) remove(w http.ResponseWriter, r *http.Request, _ *auth.User) {
 		httpx.Error(w, http.StatusConflict, "Cannot delete the default region; assign another default first")
 		return
 	}
+	if errors.Is(err, ErrBound) {
+		httpx.Error(w, http.StatusConflict, "Region has bound accounts; reassign them before deleting")
+		return
+	}
 	if err != nil {
 		httpx.Error(w, http.StatusInternalServerError, "database error")
 		return
@@ -245,7 +249,7 @@ func toResponse(r Region) response {
 		S3RegionName: r.S3RegionName,
 		IsDefault:    r.IsDefault,
 		Status:       r.Status,
-		TenantCount:  0, // ponytail: until O5 accounts
+		TenantCount:  r.TenantCount,
 		CreatedAt:    r.CreatedAt.UTC().Format(time.RFC3339),
 		UpdatedAt:    r.UpdatedAt.UTC().Format(time.RFC3339),
 	}

@@ -122,7 +122,42 @@ paths:
       responses:
         "200":
           description: updated
-        "400":
-          description: no fields
         "403":
           description: not platform_admin
+  /api/tenant-users:
+    get:
+      summary: List tenant accounts
+      responses:
+        "200":
+          description: items and total
+    post:
+      summary: Create tenant account
+      responses:
+        "201":
+          description: created
+        "409":
+          description: username taken
+  /api/tenant-users/{user_id}:
+    get:
+      summary: Get tenant account
+      responses:
+        "200":
+          description: account
+        "404":
+          description: not found
+    put:
+      summary: Update tenant account
+      responses:
+        "200":
+          description: updated
+    delete:
+      summary: Delete tenant account
+      responses:
+        "204":
+          description: deleted
+  /api/tenant-users/{user_id}/password/reset:
+    post:
+      summary: Reset tenant account password
+      responses:
+        "200":
+          description: Password reset

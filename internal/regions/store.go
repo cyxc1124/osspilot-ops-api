@@ -14,6 +14,7 @@ import (
 var (
 	ErrConflict = errors.New("region code exists")
 	ErrDefault  = errors.New("cannot delete default region")
+	ErrBound    = errors.New("region has bound accounts")
 )
 
 type Region struct {
@@ -26,6 +27,7 @@ type Region struct {
 	Status       string
 	CreatedAt    time.Time
 	UpdatedAt    time.Time
+	TenantCount  int64
 }
 
 type Store struct {
@@ -48,15 +50,31 @@ func scan(row rowScanner) (Region, error) {
 	return r, err
 }
 
+func scanListed(row rowScanner) (Region, error) {
+	var r Region
+	err := row.Scan(&r.ID, &r.Code, &r.Name, &r.S3Endpoint, &r.S3RegionName, &r.IsDefault, &r.Status, &r.CreatedAt, &r.UpdatedAt, &r.TenantCount)
+	return r, err
+}
+
 func (s *Store) List(ctx context.Context) ([]Region, error) {
-	rows, err := s.pool.Query(ctx, `SELECT `+cols+` FROM storage_regions ORDER BY id`)
+	rows, err := s.pool.Query(ctx, `
+		SELECT r.id, r.code, r.name, r.s3_endpoint, r.s3_region_name, r.is_default, r.status, r.created_at, r.updated_at,
+			COALESCE(c.n, 0)
+		FROM storage_regions r
+		LEFT JOIN (
+			SELECT storage_region_id, COUNT(*)::bigint AS n
+			FROM tenant_accounts
+			WHERE storage_region_id IS NOT NULL
+			GROUP BY storage_region_id
+		) c ON c.storage_region_id = r.id
+		ORDER BY r.id`)
 	if err != nil {
 		return nil, fmt.Errorf("list regions: %w", err)
 	}
 	defer rows.Close()
 	var out []Region
 	for rows.Next() {
-		r, err := scan(rows)
+		r, err := scanListed(rows)
 		if err != nil {
 			return nil, err
 		}
@@ -142,7 +160,13 @@ func (s *Store) Delete(ctx context.Context, id int64) error {
 	if r.IsDefault {
 		return ErrDefault
 	}
-	// ponytail: tenant_count stays 0 until O5 accounts exist
+	n, err := s.boundCount(ctx, id)
+	if err != nil {
+		return err
+	}
+	if n > 0 {
+		return ErrBound
+	}
 	tag, err := s.pool.Exec(ctx, `DELETE FROM storage_regions WHERE id = $1`, id)
 	if err != nil {
 		return fmt.Errorf("delete region: %w", err)
@@ -151,6 +175,12 @@ func (s *Store) Delete(ctx context.Context, id int64) error {
 		return pgx.ErrNoRows
 	}
 	return nil
+}
+
+func (s *Store) boundCount(ctx context.Context, id int64) (int64, error) {
+	var n int64
+	err := s.pool.QueryRow(ctx, `SELECT COUNT(*) FROM tenant_accounts WHERE storage_region_id = $1`, id).Scan(&n)
+	return n, err
 }
 
 func isUnique(err error) bool {
