@@ -234,4 +234,50 @@ paths:
       responses:
         "204":
           description: deleted
+  /api/ops/rgw/instances:
+    get:
+      summary: List RGW instances from Ceph management API
+      responses:
+        "200":
+          description: available flag and instances
+  /api/ops/rgw/stats:
+    get:
+      summary: RGW request volume and error rate
+      responses:
+        "200":
+          description: stats or degraded
+  /api/ops/cluster/health:
+    get:
+      summary: Ceph cluster health
+      responses:
+        "200":
+          description: HEALTH_OK / WARN / ERR or degraded
+  /api/ops/cluster/info:
+    get:
+      summary: Ceph version and capacity
+      responses:
+        "200":
+          description: info or degraded
+  /api/ops/s3/test:
+    post:
+      summary: List buckets against configured RGW
+      responses:
+        "200":
+          description: ok flag
+  /api/ops/rgw/restart:
+    post:
+      summary: Restart RGW daemons
+      responses:
+        "200":
+          description: restart result
+        "503":
+          description: management API unavailable
+  /api/ops/rgw/rolling-restart:
+    post:
+      summary: Rolling restart RGW daemons
+      responses:
+        "200":
+          description: restart result
+        "503":
+          description: management API unavailable
 

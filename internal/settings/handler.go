@@ -1,6 +1,7 @@
 package settings
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"strconv"
@@ -103,6 +104,30 @@ type publicSettings struct {
 	MultipartStaleDays            int     `json:"multipart_stale_days"`
 	MultipartCleanupEnabled       bool    `json:"multipart_cleanup_enabled"`
 	UpdatedAt                     *string `json:"updated_at"`
+}
+
+type Runtime struct {
+	S3Endpoint     string
+	RGWAccessKey   string
+	RGWSecretKey   string
+	CephMgmtAPIURL string
+}
+
+func (h *Handler) Runtime(ctx context.Context) (Runtime, error) {
+	rows := map[string]row{}
+	if h.store != nil {
+		var err error
+		rows, err = h.store.Load(ctx)
+		if err != nil {
+			return Runtime{}, err
+		}
+	}
+	return Runtime{
+		S3Endpoint:     pick(rows, "s3_endpoint", h.fallbacks.S3Endpoint),
+		RGWAccessKey:   pick(rows, "rgw_access_key", h.fallbacks.RGWAccessKey),
+		RGWSecretKey:   pick(rows, "rgw_secret_key", h.fallbacks.RGWSecretKey),
+		CephMgmtAPIURL: pick(rows, "ceph_mgmt_api_url", h.fallbacks.CephMgmtAPIURL),
+	}, nil
 }
 
 func (h *Handler) get(w http.ResponseWriter, r *http.Request, _ *auth.User) {

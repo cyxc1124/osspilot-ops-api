@@ -20,6 +20,8 @@ go run ./cmd/api
 - `GET|POST /api/buckets`、`POST /api/buckets/import-batch`（仅 platform_admin；不访问 RGW）
 - `GET|PUT /api/tenant-users/{user_id}/buckets`、`DELETE .../buckets/{bucket_id}`（授权并投影到租户 API）
 - `GET /api/lifecycle-rules`、`POST /api/buckets/{bucket_id}/lifecycle-rules`、`PUT|DELETE /api/lifecycle-rules/{rule_id}`（仅 platform_admin；只存规则，不跑清理任务）
+- `GET /api/ops/rgw/instances|stats`、`GET /api/ops/cluster/health|info`（登录即可；未配置 Ceph 管理 API 时 `available=false`）
+- `POST /api/ops/s3/test`（登录即可）、`POST /api/ops/rgw/restart`、`POST /api/ops/rgw/rolling-restart`（仅 platform_admin）
 
 迁移后内置 `admin` / `admin`，`must_change_password=true`。首次登录后除改密、`/api/me`、登出外一律 403。新密码至少 8 位且不能与旧密码相同。
 
@@ -29,7 +31,7 @@ go run ./cmd/api
 
 区域 `tenant_count` 按绑定账号计数；有绑定时不能删区域。RGW 密钥明文存库、接口返回打码；`********` 表示不改密钥。
 
-契约见 `openapi.yaml`。无 `DATABASE_URL` 时 healthz 仍可用，鉴权接口返回 503。
+契约见 `openapi.yaml`。无 `DATABASE_URL` 时 healthz 仍可用，鉴权接口返回 503。Ceph 管理地址来自设置或 `CEPH_MGMT_API_URL`；本地可用 `go run ./cmd/ceph-mgmt`（默认 `:8082`）当桩。
 
 ## 许可
 

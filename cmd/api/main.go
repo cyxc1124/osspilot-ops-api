@@ -12,6 +12,7 @@ import (
 	"github.com/cyxc1124/osspilot-ops-api/internal/accounts"
 	"github.com/cyxc1124/osspilot-ops-api/internal/auth"
 	"github.com/cyxc1124/osspilot-ops-api/internal/buckets"
+	"github.com/cyxc1124/osspilot-ops-api/internal/ceph"
 	"github.com/cyxc1124/osspilot-ops-api/internal/config"
 	"github.com/cyxc1124/osspilot-ops-api/internal/grants"
 	"github.com/cyxc1124/osspilot-ops-api/internal/httpx"
@@ -31,6 +32,7 @@ type apiHandlers struct {
 	buckets   *buckets.Handler
 	grants    *grants.Handler
 	lifecycle *lifecycle.Handler
+	ceph      *ceph.Handler
 }
 
 func newMux(h apiHandlers) http.Handler {
@@ -59,6 +61,9 @@ func newMux(h apiHandlers) http.Handler {
 	}
 	if h.lifecycle != nil {
 		h.lifecycle.Register(mux)
+	}
+	if h.ceph != nil {
+		h.ceph.Register(mux)
 	}
 	return httpx.CORS(mux)
 }
@@ -124,11 +129,12 @@ func main() {
 	bucketsH := buckets.NewHandler(bucketStore, regionStore, authH.RequireAdmin)
 	grantsH := grants.NewHandler(grantStore, accountStore, bucketStore, proj, authH.RequireAdmin)
 	lifeH := lifecycle.NewHandler(lifeStore, bucketStore, authH.RequireAdmin)
+	cephH := ceph.NewHandler(settingsH, authH.RequireUser, authH.RequireAdmin)
 	addr := cfg.HTTPAddr
 	slog.Info("listen", "addr", addr)
 	if err := http.ListenAndServe(addr, newMux(apiHandlers{
 		auth: authH, users: usersH, regions: regionH, settings: settingsH,
-		accounts: accountsH, buckets: bucketsH, grants: grantsH, lifecycle: lifeH,
+		accounts: accountsH, buckets: bucketsH, grants: grantsH, lifecycle: lifeH, ceph: cephH,
 	})); err != nil {
 		slog.Error("server", "err", err)
 		os.Exit(1)
