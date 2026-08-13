@@ -425,4 +425,44 @@ paths:
       responses:
         "200":
           description: counts
+  /api/tenant-api-access:
+    get:
+      summary: List tenant Open API access requests
+      responses:
+        "200":
+          description: items and total
+        "503":
+          description: tenant projection is not configured
+  /api/tenant-api-access/{account_id}:
+    get:
+      summary: Get Open API access for an ops tenant account
+      responses:
+        "200":
+          description: access record
+        "404":
+          description: account or access record not found
+  /api/tenant-api-access/{account_id}/approve:
+    post:
+      summary: Approve a pending Open API access request
+      responses:
+        "200":
+          description: approved
+        "409":
+          description: not pending
+  /api/tenant-api-access/{account_id}/reject:
+    post:
+      summary: Reject a pending Open API access request
+      responses:
+        "200":
+          description: rejected
+        "409":
+          description: not pending
+  /api/tenant-api-access/{account_id}/disable:
+    post:
+      summary: Disable approved Open API access
+      responses:
+        "200":
+          description: disabled
+        "409":
+          description: not approved
 

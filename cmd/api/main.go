@@ -9,6 +9,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/cyxc1124/osspilot-ops-api/internal/access"
 	"github.com/cyxc1124/osspilot-ops-api/internal/accounts"
 	"github.com/cyxc1124/osspilot-ops-api/internal/alerts"
 	"github.com/cyxc1124/osspilot-ops-api/internal/audit"
@@ -39,6 +40,7 @@ type apiHandlers struct {
 	audit     *audit.Handler
 	stats     *stats.Handler
 	alerts    *alerts.Handler
+	access    *access.Handler
 }
 
 func newMux(h apiHandlers) http.Handler {
@@ -79,6 +81,9 @@ func newMux(h apiHandlers) http.Handler {
 	}
 	if h.alerts != nil {
 		h.alerts.Register(mux)
+	}
+	if h.access != nil {
+		h.access.Register(mux)
 	}
 	return httpx.CORS(mux)
 }
@@ -154,12 +159,13 @@ func main() {
 	auditH := audit.NewHandler(auditStore, authH.RequireUser)
 	statsH := stats.NewHandler(statsStore, settingsH, authH.RequireUser)
 	alertH := alerts.NewHandler(alertStore, authH.RequireUser, authH.RequireAdmin)
+	accessH := access.NewHandler(accountStore, proj, auditStore, authH.RequireAdmin)
 	addr := cfg.HTTPAddr
 	slog.Info("listen", "addr", addr)
 	if err := http.ListenAndServe(addr, newMux(apiHandlers{
 		auth: authH, users: usersH, regions: regionH, settings: settingsH,
 		accounts: accountsH, buckets: bucketsH, grants: grantsH, lifecycle: lifeH, ceph: cephH,
-		audit: auditH, stats: statsH, alerts: alertH,
+		audit: auditH, stats: statsH, alerts: alertH, access: accessH,
 	})); err != nil {
 		slog.Error("server", "err", err)
 		os.Exit(1)

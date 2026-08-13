@@ -65,7 +65,76 @@ func (c *Client) ReplaceBuckets(ctx context.Context, username string, items []Bu
 	return c.do(ctx, http.MethodPut, "/internal/accounts/"+url.PathEscape(username)+"/buckets", map[string]any{"items": items})
 }
 
+type HTTPError struct {
+	Status int
+	Detail string
+}
+
+func (e *HTTPError) Error() string {
+	if e.Detail != "" {
+		return e.Detail
+	}
+	return fmt.Sprintf("tenant api status %d", e.Status)
+}
+
+type AccessItem struct {
+	ID          int64   `json:"id"`
+	AccountID   int64   `json:"account_id"`
+	AccountName string  `json:"account_name"`
+	Status      string  `json:"status"`
+	RequestedBy *int64  `json:"requested_by"`
+	RequestedAt any     `json:"requested_at"`
+	ReviewedBy  *int64  `json:"reviewed_by"`
+	ReviewedAt  any     `json:"reviewed_at"`
+	ReviewNote  *string `json:"review_note"`
+	RGWUID      *string `json:"rgw_uid"`
+	AppCount    int64   `json:"application_count"`
+	KeyCount    int64   `json:"access_key_count"`
+}
+
+func (c *Client) ListAccess(ctx context.Context, status string) ([]AccessItem, error) {
+	path := "/internal/api-access"
+	if status != "" {
+		path += "?status=" + url.QueryEscape(status)
+	}
+	var out struct {
+		Items []AccessItem `json:"items"`
+	}
+	if err := c.doJSON(ctx, http.MethodGet, path, nil, &out); err != nil {
+		return nil, err
+	}
+	if out.Items == nil {
+		return []AccessItem{}, nil
+	}
+	return out.Items, nil
+}
+
+func (c *Client) GetAccess(ctx context.Context, username string) (*AccessItem, error) {
+	var out AccessItem
+	if err := c.doJSON(ctx, http.MethodGet, "/internal/api-access/"+url.PathEscape(username), nil, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *Client) ReviewAccess(ctx context.Context, username, action string, note *string) (*AccessItem, error) {
+	body := map[string]any{}
+	if note != nil {
+		body["note"] = *note
+	}
+	var out AccessItem
+	path := "/internal/api-access/" + url.PathEscape(username) + "/" + action
+	if err := c.doJSON(ctx, http.MethodPost, path, body, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
 func (c *Client) do(ctx context.Context, method, path string, body any) error {
+	return c.doJSON(ctx, method, path, body, nil)
+}
+
+func (c *Client) doJSON(ctx context.Context, method, path string, body, dest any) error {
 	var r io.Reader
 	if body != nil {
 		b, err := json.Marshal(body)
@@ -88,8 +157,24 @@ func (c *Client) do(ctx context.Context, method, path string, body any) error {
 	}
 	defer res.Body.Close()
 	if res.StatusCode >= 200 && res.StatusCode < 300 {
-		return nil
+		if dest == nil {
+			return nil
+		}
+		return json.NewDecoder(res.Body).Decode(dest)
 	}
-	slurp, _ := io.ReadAll(io.LimitReader(res.Body, 512))
-	return fmt.Errorf("tenant %s %s: %d %s", method, path, res.StatusCode, bytes.TrimSpace(slurp))
+	slurp, _ := io.ReadAll(io.LimitReader(res.Body, 2048))
+	return &HTTPError{Status: res.StatusCode, Detail: detailFromBody(slurp, res.StatusCode)}
+}
+
+func detailFromBody(b []byte, status int) string {
+	var e struct {
+		Detail string `json:"detail"`
+	}
+	if json.Unmarshal(b, &e) == nil && e.Detail != "" {
+		return e.Detail
+	}
+	if s := strings.TrimSpace(string(b)); s != "" {
+		return s
+	}
+	return http.StatusText(status)
 }
