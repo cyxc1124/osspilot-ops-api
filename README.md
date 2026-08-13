@@ -31,7 +31,7 @@ go run ./cmd/api
 
 运营角色在 `ops_roles` / `ops_user_roles`，一个用户可同时有 `platform_admin` 和 `ops_operator`。写路径仍仅 `platform_admin`。不能停用或删除自己。审计在 `GET /api/audit-logs`（登录即可）。
 
-租户账号存在运营库 `tenant_accounts`。配置 `TENANT_API_URL` 与 `PROJECTION_SECRET` 后，账号与桶授权会投影到租户 API，开通 Open API 也走同一条内部通道（用户名对齐，无跨库外键）。未配置时账号仍可写运营库，批准接口返回 503。桶登记只记名字，不创建 RGW 桶。`GET /api/s3/buckets` 用设置里的 RGW 凭证 ListBuckets；`POST /api/buckets/{id}/inventory` 转发租户内部入队；`GET|PUT|DELETE /api/buckets/{id}/policy` 直连 RGW。`/api/tenant-users/{id}/rbac/...` 按账号 username 代理到租户内部 RBAC。
+租户账号存在运营库 `tenant_accounts`。配置 `TENANT_API_URL` 与 `PROJECTION_SECRET` 后，账号与桶授权会投影到租户 API，开通 Open API 也走同一条内部通道（用户名对齐，无跨库外键）。未配置时账号仍可写运营库，批准接口返回 503。桶登记只记名字，不创建 RGW 桶。`GET /api/s3/buckets` 用设置里的 RGW 凭证 ListBuckets；`POST /api/buckets/{id}/inventory` 转发租户内部入队；`GET|PUT|DELETE /api/buckets/{id}/policy` 直连 RGW。`/api/tenant-users/{id}/rbac/...` 按账号 username 代理到租户内部 RBAC。`PUT /api/settings` 成功后把品牌、CDN、回收站/版本/分片清理投影到租户（失败只打日志）。
 
 区域 `tenant_count` 按绑定账号计数；有绑定时不能删区域。RGW 密钥明文存库、接口返回打码；`********` 表示不改密钥。
 

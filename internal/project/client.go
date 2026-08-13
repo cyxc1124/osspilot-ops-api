@@ -117,6 +117,13 @@ func (c *Client) GetAccess(ctx context.Context, username string) (*AccessItem, e
 	return &out, nil
 }
 
+func (c *Client) PutSettings(ctx context.Context, settings map[string]string) error {
+	if c == nil {
+		return nil
+	}
+	return c.do(ctx, http.MethodPut, "/internal/settings", map[string]any{"settings": settings})
+}
+
 func (c *Client) EnqueueInventory(ctx context.Context, bucketName string) (string, error) {
 	var out struct {
 		JobID string `json:"job_id"`

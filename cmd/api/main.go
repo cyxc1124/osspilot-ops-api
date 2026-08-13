@@ -155,7 +155,7 @@ func main() {
 		ObjectHTTPSDomain: cfg.ObjectHTTPSDomain,
 		OfficeURL:         cfg.OfficeURL,
 		CephMgmtAPIURL:    cfg.CephMgmtAPIURL,
-	})
+	}, proj)
 	accountsH := accounts.NewHandler(accountStore, regionStore, proj, authH.RequireAdmin)
 	bucketsH := buckets.NewHandler(bucketStore, regionStore, settingsH, proj, authH.RequireAdmin)
 	grantsH := grants.NewHandler(grantStore, accountStore, bucketStore, proj, authH.RequireAdmin)

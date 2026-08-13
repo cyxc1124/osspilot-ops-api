@@ -3,6 +3,7 @@ package settings
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/cyxc1124/osspilot-ops-api/internal/auth"
 	"github.com/cyxc1124/osspilot-ops-api/internal/httpx"
+	"github.com/cyxc1124/osspilot-ops-api/internal/project"
 )
 
 const (
@@ -38,12 +40,13 @@ type Fallbacks struct {
 type Handler struct {
 	store     *Store
 	fallbacks Fallbacks
+	project   *project.Client
 	read      func(auth.UserHandler) http.HandlerFunc
 	write     func(auth.UserHandler) http.HandlerFunc
 }
 
-func NewHandler(store *Store, read, write func(auth.UserHandler) http.HandlerFunc, fb Fallbacks) *Handler {
-	return &Handler{store: store, read: read, write: write, fallbacks: fb}
+func NewHandler(store *Store, read, write func(auth.UserHandler) http.HandlerFunc, fb Fallbacks, proj *project.Client) *Handler {
+	return &Handler{store: store, read: read, write: write, fallbacks: fb, project: proj}
 }
 
 func (h *Handler) Register(mux *http.ServeMux) {
@@ -137,6 +140,47 @@ func (h *Handler) get(w http.ResponseWriter, r *http.Request, _ *auth.User) {
 		return
 	}
 	httpx.JSON(w, http.StatusOK, out)
+}
+
+func (h *Handler) projectTenant(ctx context.Context, out publicSettings) {
+	if h.project == nil {
+		return
+	}
+	settings := map[string]string{
+		"tenant_login_logo_text":    out.TenantLoginLogoText,
+		"tenant_login_title":        out.TenantLoginTitle,
+		"tenant_login_subtitle":     out.TenantLoginSubtitle,
+		"trash_retention_days":      strconv.Itoa(out.TrashRetentionDays),
+		"trash_cleanup_enabled":     boolStr(out.TrashCleanupEnabled),
+		"version_retention_days":    strconv.Itoa(out.VersionRetentionDays),
+		"version_cleanup_enabled":   boolStr(out.VersionCleanupEnabled),
+		"multipart_stale_days":      strconv.Itoa(out.MultipartStaleDays),
+		"multipart_cleanup_enabled": boolStr(out.MultipartCleanupEnabled),
+	}
+	if out.DownloadCDNURL != nil {
+		settings["download_cdn_url"] = *out.DownloadCDNURL
+	} else {
+		settings["download_cdn_url"] = ""
+	}
+	if out.PreviewCDNURL != nil {
+		settings["preview_cdn_url"] = *out.PreviewCDNURL
+	} else {
+		settings["preview_cdn_url"] = ""
+	}
+	if out.ObjectHTTPDomain != nil {
+		settings["object_http_domain"] = *out.ObjectHTTPDomain
+	} else {
+		settings["object_http_domain"] = ""
+	}
+	if out.ObjectHTTPSDomain != nil {
+		settings["object_https_domain"] = *out.ObjectHTTPSDomain
+	} else {
+		settings["object_https_domain"] = ""
+	}
+	if err := h.project.PutSettings(ctx, settings); err != nil {
+		// ponytail: ops save wins even if tenant is down; next PUT retries.
+		slog.Warn("project settings to tenant", "err", err)
+	}
 }
 
 func (h *Handler) put(w http.ResponseWriter, r *http.Request, _ *auth.User) {
@@ -310,6 +354,7 @@ func (h *Handler) put(w http.ResponseWriter, r *http.Request, _ *auth.User) {
 		httpx.Error(w, http.StatusInternalServerError, "database error")
 		return
 	}
+	h.projectTenant(r.Context(), out)
 	httpx.JSON(w, http.StatusOK, out)
 }
 
