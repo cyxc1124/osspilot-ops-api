@@ -83,3 +83,31 @@ paths:
       responses:
         "200":
           description: Password reset
+  /api/regions:
+    get:
+      summary: List storage regions
+      responses:
+        "200":
+          description: items and total
+    post:
+      summary: Create storage region
+      responses:
+        "201":
+          description: created
+        "409":
+          description: code taken
+  /api/regions/{region_id}:
+    put:
+      summary: Update storage region
+      responses:
+        "200":
+          description: updated
+        "404":
+          description: not found
+    delete:
+      summary: Delete storage region
+      responses:
+        "204":
+          description: deleted
+        "409":
+          description: default region
