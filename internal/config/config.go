@@ -21,6 +21,8 @@ type Config struct {
 	ObjectHTTPSDomain string
 	OfficeURL         string
 	CephMgmtAPIURL    string
+	TenantAPIURL      string
+	ProjectionSecret  string
 }
 
 func Load() Config {
@@ -41,6 +43,8 @@ func Load() Config {
 		ObjectHTTPSDomain: os.Getenv("OBJECT_HTTPS_DOMAIN"),
 		OfficeURL:         os.Getenv("OFFICE_URL"),
 		CephMgmtAPIURL:    os.Getenv("CEPH_MGMT_API_URL"),
+		TenantAPIURL:      os.Getenv("TENANT_API_URL"),
+		ProjectionSecret:  os.Getenv("PROJECTION_SECRET"),
 	}
 }
 

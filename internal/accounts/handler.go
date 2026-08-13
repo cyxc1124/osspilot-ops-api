@@ -12,17 +12,19 @@ import (
 
 	"github.com/cyxc1124/osspilot-ops-api/internal/auth"
 	"github.com/cyxc1124/osspilot-ops-api/internal/httpx"
+	"github.com/cyxc1124/osspilot-ops-api/internal/project"
 	"github.com/cyxc1124/osspilot-ops-api/internal/regions"
 )
 
 type Handler struct {
 	store   *Store
 	regions *regions.Store
+	project *project.Client
 	protect func(auth.UserHandler) http.HandlerFunc
 }
 
-func NewHandler(store *Store, regions *regions.Store, protect func(auth.UserHandler) http.HandlerFunc) *Handler {
-	return &Handler{store: store, regions: regions, protect: protect}
+func NewHandler(store *Store, regions *regions.Store, project *project.Client, protect func(auth.UserHandler) http.HandlerFunc) *Handler {
+	return &Handler{store: store, regions: regions, project: project, protect: protect}
 }
 
 func (h *Handler) Register(mux *http.ServeMux) {
@@ -142,6 +144,11 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request, _ *auth.User) {
 		httpx.Error(w, http.StatusInternalServerError, "database error")
 		return
 	}
+	must := true
+	if err := h.pushAccount(r, *u, &must); err != nil {
+		httpx.Error(w, http.StatusBadGateway, "tenant projection failed")
+		return
+	}
 	httpx.JSON(w, http.StatusCreated, toResponse(*u))
 }
 
@@ -221,19 +228,23 @@ func (h *Handler) update(w http.ResponseWriter, r *http.Request, _ *auth.User) {
 		httpx.Error(w, http.StatusInternalServerError, "database error")
 		return
 	}
+	if err := h.pushAccount(r, *out, nil); err != nil {
+		httpx.Error(w, http.StatusBadGateway, "tenant projection failed")
+		return
+	}
 	httpx.JSON(w, http.StatusOK, toResponse(*out))
 }
 
 func (h *Handler) remove(w http.ResponseWriter, r *http.Request, _ *auth.User) {
-	id, ok := pathID(w, r)
-	if !ok {
+	u := h.load(w, r)
+	if u == nil {
 		return
 	}
-	if h.store == nil {
-		httpx.Error(w, http.StatusServiceUnavailable, "database is not configured")
+	if err := h.project.DeleteAccount(r.Context(), u.Username); err != nil {
+		httpx.Error(w, http.StatusBadGateway, "tenant projection failed")
 		return
 	}
-	err := h.store.Delete(r.Context(), id)
+	err := h.store.Delete(r.Context(), u.ID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		httpx.Error(w, http.StatusNotFound, "User not found")
 		return
@@ -281,7 +292,28 @@ func (h *Handler) resetPassword(w http.ResponseWriter, r *http.Request, _ *auth.
 		httpx.Error(w, http.StatusInternalServerError, "database error")
 		return
 	}
+	must := true
+	if err := h.pushAccount(r, *existing, &must); err != nil {
+		httpx.Error(w, http.StatusBadGateway, "tenant projection failed")
+		return
+	}
 	httpx.JSON(w, http.StatusOK, map[string]string{"message": "Password reset"})
+}
+
+func (h *Handler) pushAccount(r *http.Request, u Record, must *bool) error {
+	hash, _, err := h.store.Secret(r.Context(), u.ID)
+	if err != nil {
+		return err
+	}
+	return h.project.UpsertAccount(r.Context(), project.Account{
+		Username:           u.Username,
+		PasswordHash:       hash,
+		DisplayName:        u.DisplayName,
+		Email:              u.Email,
+		Phone:              u.Phone,
+		Status:             u.Status,
+		MustChangePassword: must,
+	})
 }
 
 func (h *Handler) load(w http.ResponseWriter, r *http.Request) *Record {

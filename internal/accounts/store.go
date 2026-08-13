@@ -135,6 +135,17 @@ func (s *Store) Update(ctx context.Context, u *Record) (*Record, error) {
 	return s.GetByID(ctx, u.ID)
 }
 
+func (s *Store) Secret(ctx context.Context, id int64) (hash string, mustChange bool, err error) {
+	err = s.pool.QueryRow(ctx, `SELECT password_hash, must_change_password FROM tenant_accounts WHERE id = $1`, id).Scan(&hash, &mustChange)
+	if err == pgx.ErrNoRows {
+		return "", false, nil
+	}
+	if err != nil {
+		return "", false, fmt.Errorf("account secret: %w", err)
+	}
+	return hash, mustChange, nil
+}
+
 func (s *Store) UpdatePassword(ctx context.Context, id int64, hash string, at time.Time) error {
 	tag, err := s.pool.Exec(ctx, `UPDATE tenant_accounts SET password_hash = $2, updated_at = $3 WHERE id = $1`, id, hash, at)
 	if err != nil {

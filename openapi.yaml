@@ -161,3 +161,50 @@ paths:
       responses:
         "200":
           description: Password reset
+  /api/buckets:
+    get:
+      summary: List registered platform buckets
+      responses:
+        "200":
+          description: items and total
+    post:
+      summary: Register a bucket name
+      responses:
+        "201":
+          description: registered
+        "409":
+          description: name taken
+  /api/buckets/import-batch:
+    post:
+      summary: Register many bucket names
+      responses:
+        "200":
+          description: imported and failed
+  /api/s3/buckets:
+    get:
+      summary: Discover RGW buckets (empty until storage client)
+      responses:
+        "200":
+          description: items and total
+  /api/tenant-users/{user_id}/buckets:
+    get:
+      summary: List buckets granted to a tenant account
+      responses:
+        "200":
+          description: items and total
+    put:
+      summary: Replace grants and project to tenant API
+      responses:
+        "200":
+          description: items and total
+        "409":
+          description: bucket limit exceeded
+  /api/tenant-users/{user_id}/buckets/{bucket_id}:
+    delete:
+      summary: Revoke one grant
+      responses:
+        "204":
+          description: revoked
+        "404":
+          description: grant not found
+

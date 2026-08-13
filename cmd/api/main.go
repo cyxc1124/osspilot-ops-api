@@ -11,14 +11,17 @@ import (
 
 	"github.com/cyxc1124/osspilot-ops-api/internal/accounts"
 	"github.com/cyxc1124/osspilot-ops-api/internal/auth"
+	"github.com/cyxc1124/osspilot-ops-api/internal/buckets"
 	"github.com/cyxc1124/osspilot-ops-api/internal/config"
+	"github.com/cyxc1124/osspilot-ops-api/internal/grants"
 	"github.com/cyxc1124/osspilot-ops-api/internal/httpx"
+	"github.com/cyxc1124/osspilot-ops-api/internal/project"
 	"github.com/cyxc1124/osspilot-ops-api/internal/regions"
 	"github.com/cyxc1124/osspilot-ops-api/internal/settings"
 	"github.com/cyxc1124/osspilot-ops-api/internal/users"
 )
 
-func newMux(authH *auth.Handler, usersH *users.Handler, regionH *regions.Handler, settingsH *settings.Handler, accountsH *accounts.Handler) http.Handler {
+func newMux(authH *auth.Handler, usersH *users.Handler, regionH *regions.Handler, settingsH *settings.Handler, accountsH *accounts.Handler, bucketsH *buckets.Handler, grantsH *grants.Handler) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", healthz)
 	if authH != nil {
@@ -36,6 +39,12 @@ func newMux(authH *auth.Handler, usersH *users.Handler, regionH *regions.Handler
 	if accountsH != nil {
 		accountsH.Register(mux)
 	}
+	if bucketsH != nil {
+		bucketsH.Register(mux)
+	}
+	if grantsH != nil {
+		grantsH.Register(mux)
+	}
 	return httpx.CORS(mux)
 }
 
@@ -50,11 +59,18 @@ func main() {
 		slog.Warn("JWT_SECRET unset; using development default")
 	}
 
+	proj := project.New(cfg.TenantAPIURL, cfg.ProjectionSecret)
+	if proj == nil {
+		slog.Warn("TENANT_API_URL/PROJECTION_SECRET unset; tenant projection skipped")
+	}
+
 	var authStore *auth.Store
 	var userStore *users.Store
 	var regionStore *regions.Store
 	var settingsStore *settings.Store
 	var accountStore *accounts.Store
+	var bucketStore *buckets.Store
+	var grantStore *grants.Store
 	if cfg.DatabaseURL != "" {
 		pool, err := pgxpool.New(context.Background(), cfg.DatabaseURL)
 		if err != nil {
@@ -67,6 +83,8 @@ func main() {
 		regionStore = regions.NewStore(pool)
 		settingsStore = settings.NewStore(pool)
 		accountStore = accounts.NewStore(pool)
+		bucketStore = buckets.NewStore(pool)
+		grantStore = grants.NewStore(pool)
 	} else {
 		slog.Warn("DATABASE_URL unset; auth routes return 503")
 	}
@@ -85,10 +103,12 @@ func main() {
 		OfficeURL:         cfg.OfficeURL,
 		CephMgmtAPIURL:    cfg.CephMgmtAPIURL,
 	})
-	accountsH := accounts.NewHandler(accountStore, regionStore, authH.RequireAdmin)
+	accountsH := accounts.NewHandler(accountStore, regionStore, proj, authH.RequireAdmin)
+	bucketsH := buckets.NewHandler(bucketStore, regionStore, authH.RequireAdmin)
+	grantsH := grants.NewHandler(grantStore, accountStore, bucketStore, proj, authH.RequireAdmin)
 	addr := cfg.HTTPAddr
 	slog.Info("listen", "addr", addr)
-	if err := http.ListenAndServe(addr, newMux(authH, usersH, regionH, settingsH, accountsH)); err != nil {
+	if err := http.ListenAndServe(addr, newMux(authH, usersH, regionH, settingsH, accountsH, bucketsH, grantsH)); err != nil {
 		slog.Error("server", "err", err)
 		os.Exit(1)
 	}
