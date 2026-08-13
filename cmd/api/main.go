@@ -145,7 +145,7 @@ func main() {
 	authH := auth.NewHandler(authStore, cfg.JWTSecret, cfg.TokenTTL)
 	usersH := users.NewHandler(userStore, authH.RequireAdmin)
 	regionH := regions.NewHandler(regionStore, authH.RequireUser, authH.RequireAdmin)
-	settingsH := settings.NewHandler(settingsStore, authH.RequireUser, authH.RequireAdmin, settings.Fallbacks{
+	settingsH := settings.NewHandler(settingsStore, regionStore, authH.RequireUser, authH.RequireAdmin, settings.Fallbacks{
 		S3Endpoint:        cfg.S3Endpoint,
 		RGWAccessKey:      cfg.RGWAccessKey,
 		RGWSecretKey:      cfg.RGWSecretKey,
@@ -162,8 +162,8 @@ func main() {
 	lifeH := lifecycle.NewHandler(lifeStore, bucketStore, authH.RequireAdmin)
 	cephH := ceph.NewHandler(settingsH, authH.RequireUser, authH.RequireAdmin)
 	auditH := audit.NewHandler(auditStore, authH.RequireUser)
-	statsH := stats.NewHandler(statsStore, settingsH, authH.RequireUser)
-	alertH := alerts.NewHandler(alertStore, authH.RequireUser, authH.RequireAdmin)
+	statsH := stats.NewHandler(statsStore, grantStore, settingsH, proj, authH.RequireUser)
+	alertH := alerts.NewHandler(alertStore, statsStore, bucketStore, grantStore, proj, authH.RequireUser, authH.RequireAdmin)
 	accessH := access.NewHandler(accountStore, proj, auditStore, authH.RequireAdmin)
 	rbacH := tenantrbac.NewHandler(accountStore, proj, authH.RequireAdmin)
 	addr := cfg.HTTPAddr

@@ -124,6 +124,38 @@ func (c *Client) PutSettings(ctx context.Context, settings map[string]string) er
 	return c.do(ctx, http.MethodPut, "/internal/settings", map[string]any{"settings": settings})
 }
 
+type UsageBucket struct {
+	BucketName  string `json:"bucket_name"`
+	UsedBytes   int64  `json:"used_bytes"`
+	ObjectCount int64  `json:"object_count"`
+	TrashBytes  int64  `json:"trash_bytes"`
+	TrashCount  int64  `json:"trash_object_count"`
+}
+
+type Usage struct {
+	UsedBytes    int64         `json:"used_bytes"`
+	ObjectCount  int64         `json:"object_count"`
+	TrashBytes   int64         `json:"trash_bytes"`
+	TrashCount   int64         `json:"trash_object_count"`
+	VersionBytes int64         `json:"version_bytes"`
+	VersionCount int64         `json:"version_object_count"`
+	Buckets      []UsageBucket `json:"buckets"`
+}
+
+func (c *Client) GetUsage(ctx context.Context) (*Usage, error) {
+	if c == nil {
+		return nil, &HTTPError{Status: http.StatusServiceUnavailable, Detail: "tenant projection is not configured"}
+	}
+	var out Usage
+	if err := c.doJSON(ctx, http.MethodGet, "/internal/stats/usage", nil, &out); err != nil {
+		return nil, err
+	}
+	if out.Buckets == nil {
+		out.Buckets = []UsageBucket{}
+	}
+	return &out, nil
+}
+
 func (c *Client) EnqueueInventory(ctx context.Context, bucketName string) (string, error) {
 	var out struct {
 		JobID string `json:"job_id"`

@@ -1,23 +1,39 @@
 package stats
 
 import (
+	"context"
 	"net/http"
 	"strconv"
 
 	"github.com/cyxc1124/osspilot-ops-api/internal/auth"
 	"github.com/cyxc1124/osspilot-ops-api/internal/ceph"
+	"github.com/cyxc1124/osspilot-ops-api/internal/grants"
 	"github.com/cyxc1124/osspilot-ops-api/internal/httpx"
+	"github.com/cyxc1124/osspilot-ops-api/internal/project"
 	"github.com/cyxc1124/osspilot-ops-api/internal/settings"
 )
 
 type Handler struct {
 	store    *Store
+	grants   *grants.Store
 	settings *settings.Handler
+	project  *project.Client
 	protect  func(auth.UserHandler) http.HandlerFunc
 }
 
-func NewHandler(store *Store, settingsH *settings.Handler, protect func(auth.UserHandler) http.HandlerFunc) *Handler {
-	return &Handler{store: store, settings: settingsH, protect: protect}
+func NewHandler(store *Store, grantStore *grants.Store, settingsH *settings.Handler, proj *project.Client, protect func(auth.UserHandler) http.HandlerFunc) *Handler {
+	return &Handler{store: store, grants: grantStore, settings: settingsH, project: proj, protect: protect}
+}
+
+func (h *Handler) tenantUsage(ctx context.Context) *project.Usage {
+	if h.project == nil {
+		return nil
+	}
+	u, err := h.project.GetUsage(ctx)
+	if err != nil {
+		return nil
+	}
+	return u
 }
 
 func (h *Handler) Register(mux *http.ServeMux) {
@@ -49,9 +65,13 @@ func (h *Handler) overview(w http.ResponseWriter, r *http.Request, _ *auth.User)
 		httpx.Error(w, http.StatusInternalServerError, "database error")
 		return
 	}
+	used, objects, trashB, trashN := int64(0), int64(0), int64(0), int64(0)
+	if u := h.tenantUsage(r.Context()); u != nil {
+		used, objects, trashB, trashN = u.UsedBytes, u.ObjectCount, u.TrashBytes, u.TrashCount
+	}
 	httpx.JSON(w, http.StatusOK, map[string]any{
-		"total_used_bytes": 0, "total_quota_bytes": o.QuotaBytes, "total_object_count": 0,
-		"total_trash_bytes": 0, "total_trash_object_count": 0, "tenant_count": o.TenantCount,
+		"total_used_bytes": used, "total_quota_bytes": o.QuotaBytes, "total_object_count": objects,
+		"total_trash_bytes": trashB, "total_trash_object_count": trashN, "tenant_count": o.TenantCount,
 		"bucket_count": o.BucketCount, "collected_at": collected(),
 	})
 }
@@ -74,12 +94,30 @@ func (h *Handler) tenants(w http.ResponseWriter, r *http.Request, _ *auth.User) 
 		httpx.Error(w, http.StatusInternalServerError, "database error")
 		return
 	}
+	byBucket := map[string]project.UsageBucket{}
+	if u := h.tenantUsage(r.Context()); u != nil {
+		for _, b := range u.Buckets {
+			byBucket[b.BucketName] = b
+		}
+	}
 	items := make([]map[string]any, 0, len(rows))
 	for _, t := range rows {
+		used, objects, trash := int64(0), int64(0), int64(0)
+		if h.grants != nil {
+			if gs, err := h.grants.List(r.Context(), t.ID); err == nil {
+				for _, g := range gs {
+					if b, ok := byBucket[g.BucketName]; ok {
+						used += b.UsedBytes
+						objects += b.ObjectCount
+						trash += b.TrashBytes
+					}
+				}
+			}
+		}
 		items = append(items, map[string]any{
 			"tenant_id": t.ID, "name": t.Name, "display_name": t.DisplayName, "status": t.Status,
-			"quota_bytes": t.QuotaBytes, "used_bytes": 0, "object_count": 0, "trash_bytes": 0,
-			"usage_percent": usagePercent(0, t.QuotaBytes),
+			"quota_bytes": t.QuotaBytes, "used_bytes": used, "object_count": objects, "trash_bytes": trash,
+			"usage_percent": usagePercent(used, t.QuotaBytes),
 		})
 	}
 	httpx.JSON(w, http.StatusOK, map[string]any{"items": items})
@@ -168,7 +206,16 @@ func (h *Handler) buckets(w http.ResponseWriter, r *http.Request, _ *auth.User) 
 		httpx.Error(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	httpx.JSON(w, http.StatusOK, map[string]any{"period": period, "items": []any{}, "collected_at": collected()})
+	items := []map[string]any{}
+	if u := h.tenantUsage(r.Context()); u != nil {
+		for _, b := range u.Buckets {
+			items = append(items, map[string]any{
+				"bucket_name": b.BucketName, "used_bytes": b.UsedBytes, "object_count": b.ObjectCount,
+				"trash_bytes": b.TrashBytes,
+			})
+		}
+	}
+	httpx.JSON(w, http.StatusOK, map[string]any{"period": period, "items": items, "collected_at": collected()})
 }
 
 func (h *Handler) prefixes(w http.ResponseWriter, r *http.Request, _ *auth.User) {

@@ -8,17 +8,27 @@ import (
 	"time"
 
 	"github.com/cyxc1124/osspilot-ops-api/internal/auth"
+	"github.com/cyxc1124/osspilot-ops-api/internal/buckets"
+	"github.com/cyxc1124/osspilot-ops-api/internal/grants"
 	"github.com/cyxc1124/osspilot-ops-api/internal/httpx"
+	"github.com/cyxc1124/osspilot-ops-api/internal/project"
+	"github.com/cyxc1124/osspilot-ops-api/internal/stats"
 )
 
 type Handler struct {
 	store *Store
+	eval  *Evaluator
 	read  func(auth.UserHandler) http.HandlerFunc
 	write func(auth.UserHandler) http.HandlerFunc
 }
 
-func NewHandler(store *Store, read, write func(auth.UserHandler) http.HandlerFunc) *Handler {
-	return &Handler{store: store, read: read, write: write}
+func NewHandler(store *Store, statsStore *stats.Store, bucketStore *buckets.Store, grantStore *grants.Store, proj *project.Client, read, write func(auth.UserHandler) http.HandlerFunc) *Handler {
+	return &Handler{
+		store: store,
+		eval:  &Evaluator{store: store, stats: statsStore, buckets: bucketStore, grants: grantStore, project: proj},
+		read:  read,
+		write: write,
+	}
 }
 
 func (h *Handler) Register(mux *http.ServeMux) {
@@ -413,13 +423,12 @@ func (h *Handler) evaluate(w http.ResponseWriter, r *http.Request, _ *auth.User)
 	if !h.ready(w) {
 		return
 	}
-	// ponytail: no usage/RGW series yet; returns enabled-rule count. Wire thresholds when stats land.
-	n, err := h.store.CountEnabled(r.Context())
+	n, created, resolved, err := h.eval.Run(r.Context())
 	if err != nil {
 		httpx.Error(w, http.StatusInternalServerError, "database error")
 		return
 	}
-	httpx.JSON(w, http.StatusOK, map[string]any{"evaluated_rules": n, "new_events": 0, "resolved_events": 0})
+	httpx.JSON(w, http.StatusOK, map[string]any{"evaluated_rules": n, "new_events": created, "resolved_events": resolved})
 }
 
 func (h *Handler) loadRule(w http.ResponseWriter, r *http.Request) *Rule {

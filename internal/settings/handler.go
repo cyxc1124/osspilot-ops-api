@@ -12,6 +12,7 @@ import (
 	"github.com/cyxc1124/osspilot-ops-api/internal/auth"
 	"github.com/cyxc1124/osspilot-ops-api/internal/httpx"
 	"github.com/cyxc1124/osspilot-ops-api/internal/project"
+	"github.com/cyxc1124/osspilot-ops-api/internal/regions"
 )
 
 const (
@@ -39,14 +40,15 @@ type Fallbacks struct {
 
 type Handler struct {
 	store     *Store
+	regions   *regions.Store
 	fallbacks Fallbacks
 	project   *project.Client
 	read      func(auth.UserHandler) http.HandlerFunc
 	write     func(auth.UserHandler) http.HandlerFunc
 }
 
-func NewHandler(store *Store, read, write func(auth.UserHandler) http.HandlerFunc, fb Fallbacks, proj *project.Client) *Handler {
-	return &Handler{store: store, read: read, write: write, fallbacks: fb, project: proj}
+func NewHandler(store *Store, regionStore *regions.Store, read, write func(auth.UserHandler) http.HandlerFunc, fb Fallbacks, proj *project.Client) *Handler {
+	return &Handler{store: store, regions: regionStore, read: read, write: write, fallbacks: fb, project: proj}
 }
 
 func (h *Handler) Register(mux *http.ServeMux) {
@@ -176,6 +178,19 @@ func (h *Handler) projectTenant(ctx context.Context, out publicSettings) {
 		settings["object_https_domain"] = *out.ObjectHTTPSDomain
 	} else {
 		settings["object_https_domain"] = ""
+	}
+	if h.regions != nil {
+		if regs, err := h.regions.List(ctx); err == nil {
+			for _, reg := range regs {
+				if reg.IsDefault && reg.Status == "active" {
+					settings["storage_region_id"] = strconv.FormatInt(reg.ID, 10)
+					settings["storage_region_code"] = reg.Code
+					settings["storage_region_name"] = reg.Name
+					settings["s3_endpoint"] = reg.S3Endpoint
+					break
+				}
+			}
+		}
 	}
 	if err := h.project.PutSettings(ctx, settings); err != nil {
 		// ponytail: ops save wins even if tenant is down; next PUT retries.

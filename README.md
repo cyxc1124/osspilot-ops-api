@@ -23,9 +23,9 @@ go run ./cmd/worker   # 生命周期清理（读规则 + 设置里的 RGW；可�
 - `GET /api/lifecycle-rules`、`POST /api/buckets/{bucket_id}/lifecycle-rules`、`PUT|DELETE /api/lifecycle-rules/{rule_id}`（仅 platform_admin；`cmd/worker` 在 `lifecycle_cleanup_enabled` 时按规则扫 RGW 删除/abort）
 - `GET /api/ops/rgw/instances|stats`、`GET /api/ops/cluster/health|info`（登录即可；未配置 Ceph 管理 API 时 `available=false`）
 - `POST /api/ops/s3/test`（登录即可）、`POST /api/ops/rgw/restart`、`POST /api/ops/rgw/rolling-restart`（仅 platform_admin）
-- `GET /api/stats/overview|tenants/ranking|storage-classes|traffic|traffic/daily|performance|behavior/users|buckets/ranking|prefixes/ranking`（登录即可；对象用量与流量暂为 0）
+- `GET /api/stats/overview|tenants/ranking|storage-classes|traffic|traffic/daily|performance|behavior/users|buckets/ranking|prefixes/ranking`（登录即可；对象用量从租户清单聚合；流量/行为序列仍可为空）
 - `GET /api/audit-logs`、`GET /api/audit-logs/export`
-- `GET|POST /api/alerts/rules`、`GET|PUT|DELETE /api/alerts/rules/{id}`、渠道与事件、`POST /api/alerts/evaluate`（评估暂只计启用规则，不写事件）
+- `GET|POST /api/alerts/rules`、`GET|PUT|DELETE /api/alerts/rules/{id}`、渠道与事件、`POST /api/alerts/evaluate`（按配额/桶容量阈值写或关闭 alert_events）
 - `GET /api/tenant-api-access`、`GET /api/tenant-api-access/{account_id}`、`POST .../{approve,reject,disable}`（仅 platform_admin；按用户名对齐租户开通记录）
 
 迁移后内置 `admin` / `admin`，`must_change_password=true`。首次登录后除改密、`/api/me`、登出外一律 403。新密码至少 8 位且不能与旧密码相同。

@@ -283,3 +283,76 @@ func nzJSON(raw json.RawMessage, empty string) []byte {
 }
 
 func nzArray(raw json.RawMessage) []byte { return nzJSON(raw, "[]") }
+
+func (s *Store) ListEnabledRules(ctx context.Context) ([]Rule, error) {
+	rows, err := s.pool.Query(ctx, `SELECT id, name, rule_type, enabled, severity, config, channel_ids, notify_tenant, description, created_at, updated_at FROM alert_rules WHERE enabled ORDER BY id`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Rule
+	for rows.Next() {
+		var r Rule
+		if err := rows.Scan(&r.ID, &r.Name, &r.RuleType, &r.Enabled, &r.Severity, &r.Config, &r.ChannelIDs, &r.NotifyTenant, &r.Description, &r.CreatedAt, &r.UpdatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}
+
+func (s *Store) HasOpenEvent(ctx context.Context, ruleID int64, tenantID, bucketID *int64) (bool, error) {
+	q := `SELECT EXISTS(SELECT 1 FROM alert_events WHERE rule_id=$1 AND status IN ('firing','acknowledged')`
+	args := []any{ruleID}
+	n := 2
+	if tenantID != nil {
+		q += fmt.Sprintf(` AND tenant_id=$%d`, n)
+		args = append(args, *tenantID)
+		n++
+	} else {
+		q += ` AND tenant_id IS NULL`
+	}
+	if bucketID != nil {
+		q += fmt.Sprintf(` AND bucket_id=$%d`, n)
+		args = append(args, *bucketID)
+	} else {
+		q += ` AND bucket_id IS NULL`
+	}
+	q += `)`
+	var ok bool
+	err := s.pool.QueryRow(ctx, q, args...).Scan(&ok)
+	return ok, err
+}
+
+func (s *Store) InsertEvent(ctx context.Context, e Event) (*Event, error) {
+	var id int64
+	err := s.pool.QueryRow(ctx, `
+		INSERT INTO alert_events (rule_id, rule_type, severity, status, title, message, tenant_id, bucket_id, bucket_name, details, notify_tenant)
+		VALUES ($1,$2,$3,'firing',$4,$5,$6,$7,$8,$9,$10) RETURNING id`,
+		e.RuleID, e.RuleType, e.Severity, e.Title, e.Message, e.TenantID, e.BucketID, e.BucketName, nzJSON(e.Details, "{}"), e.NotifyTenant).Scan(&id)
+	if err != nil {
+		return nil, err
+	}
+	return s.GetEvent(ctx, id)
+}
+
+func (s *Store) ResolveOpen(ctx context.Context, ruleID int64, tenantID, bucketID *int64) (int, error) {
+	q := `UPDATE alert_events SET status='resolved', resolved_at=now() WHERE rule_id=$1 AND status IN ('firing','acknowledged')`
+	args := []any{ruleID}
+	n := 2
+	if tenantID != nil {
+		q += fmt.Sprintf(` AND tenant_id=$%d`, n)
+		args = append(args, *tenantID)
+		n++
+	}
+	if bucketID != nil {
+		q += fmt.Sprintf(` AND bucket_id=$%d`, n)
+		args = append(args, *bucketID)
+	}
+	tag, err := s.pool.Exec(ctx, q, args...)
+	if err != nil {
+		return 0, err
+	}
+	return int(tag.RowsAffected()), nil
+}
+
