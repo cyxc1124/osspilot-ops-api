@@ -8,25 +8,32 @@ import (
 
 	"github.com/cyxc1124/osspilot-ops-api/internal/auth"
 	"github.com/cyxc1124/osspilot-ops-api/internal/httpx"
+	"github.com/cyxc1124/osspilot-ops-api/internal/project"
 	"github.com/cyxc1124/osspilot-ops-api/internal/regions"
+	"github.com/cyxc1124/osspilot-ops-api/internal/settings"
 )
 
 type Handler struct {
-	store   *Store
-	regions *regions.Store
-	protect func(auth.UserHandler) http.HandlerFunc
+	store    *Store
+	regions  *regions.Store
+	settings *settings.Handler
+	project  *project.Client
+	protect  func(auth.UserHandler) http.HandlerFunc
 }
 
-func NewHandler(store *Store, regions *regions.Store, protect func(auth.UserHandler) http.HandlerFunc) *Handler {
-	return &Handler{store: store, regions: regions, protect: protect}
+func NewHandler(store *Store, regions *regions.Store, settingsH *settings.Handler, proj *project.Client, protect func(auth.UserHandler) http.HandlerFunc) *Handler {
+	return &Handler{store: store, regions: regions, settings: settingsH, project: proj, protect: protect}
 }
 
 func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/buckets", h.protect(h.list))
 	mux.HandleFunc("POST /api/buckets", h.protect(h.create))
 	mux.HandleFunc("POST /api/buckets/import-batch", h.protect(h.importBatch))
-	// ponytail: S3 discovery waits for a storage client; empty list keeps the ops buckets page from 404.
 	mux.HandleFunc("GET /api/s3/buckets", h.protect(h.discover))
+	mux.HandleFunc("POST /api/buckets/{bucket_id}/inventory", h.protect(h.inventory))
+	mux.HandleFunc("GET /api/buckets/{bucket_id}/policy", h.protect(h.getPolicy))
+	mux.HandleFunc("PUT /api/buckets/{bucket_id}/policy", h.protect(h.putPolicy))
+	mux.HandleFunc("DELETE /api/buckets/{bucket_id}/policy", h.protect(h.deletePolicy))
 }
 
 type createRequest struct {
@@ -136,10 +143,6 @@ func (h *Handler) importBatch(w http.ResponseWriter, r *http.Request, _ *auth.Us
 		imported = append(imported, toDetail(*b))
 	}
 	httpx.JSON(w, http.StatusOK, map[string]any{"imported": imported, "failed": failed})
-}
-
-func (h *Handler) discover(w http.ResponseWriter, _ *http.Request, _ *auth.User) {
-	httpx.JSON(w, http.StatusOK, map[string]any{"items": []any{}, "total": 0})
 }
 
 func (h *Handler) register(r *http.Request, name string, display *string, regionID, quota, objects *int64) (*Bucket, error) {

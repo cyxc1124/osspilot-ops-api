@@ -117,6 +117,16 @@ func (c *Client) GetAccess(ctx context.Context, username string) (*AccessItem, e
 	return &out, nil
 }
 
+func (c *Client) EnqueueInventory(ctx context.Context, bucketName string) (string, error) {
+	var out struct {
+		JobID string `json:"job_id"`
+	}
+	if err := c.doJSON(ctx, http.MethodPost, "/internal/buckets/"+url.PathEscape(bucketName)+"/inventory", map[string]any{}, &out); err != nil {
+		return "", err
+	}
+	return out.JobID, nil
+}
+
 func (c *Client) ReviewAccess(ctx context.Context, username, action string, note *string) (*AccessItem, error) {
 	body := map[string]any{}
 	if note != nil {

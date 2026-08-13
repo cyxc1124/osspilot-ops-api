@@ -182,10 +182,39 @@ paths:
           description: imported and failed
   /api/s3/buckets:
     get:
-      summary: Discover RGW buckets (empty until storage client)
+      summary: Discover RGW buckets via settings credentials
+      parameters:
+        - in: query
+          name: unregistered_only
+          schema:
+            type: string
       responses:
         "200":
           description: items and total
+  /api/buckets/{bucket_id}/inventory:
+    post:
+      summary: Enqueue tenant-side inventory scan for a registered bucket
+      responses:
+        "200":
+          description: job_id and message
+        "404":
+          description: bucket not found
+  /api/buckets/{bucket_id}/policy:
+    get:
+      summary: Get RGW bucket policy
+      responses:
+        "200":
+          description: policy payload
+    put:
+      summary: Put RGW bucket policy
+      responses:
+        "200":
+          description: policy payload
+    delete:
+      summary: Delete RGW bucket policy
+      responses:
+        "204":
+          description: deleted
   /api/tenant-users/{user_id}/buckets:
     get:
       summary: List buckets granted to a tenant account

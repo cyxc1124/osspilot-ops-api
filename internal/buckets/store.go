@@ -109,6 +109,36 @@ func (s *Store) GetByIDs(ctx context.Context, ids []int64) ([]Bucket, error) {
 	return out, rows.Err()
 }
 
+func (s *Store) NameSet(ctx context.Context) (map[string]struct{}, error) {
+	rows, err := s.pool.Query(ctx, `SELECT bucket_name FROM platform_buckets`)
+	if err != nil {
+		return nil, fmt.Errorf("bucket names: %w", err)
+	}
+	defer rows.Close()
+	out := map[string]struct{}{}
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return nil, err
+		}
+		out[name] = struct{}{}
+	}
+	return out, rows.Err()
+}
+
+func (s *Store) FirstAccountID(ctx context.Context, bucketID int64) (int64, error) {
+	var id int64
+	err := s.pool.QueryRow(ctx, `
+		SELECT account_id FROM account_bucket_grants WHERE bucket_id = $1 ORDER BY account_id LIMIT 1`, bucketID).Scan(&id)
+	if err == pgx.ErrNoRows {
+		return 0, nil
+	}
+	if err != nil {
+		return 0, fmt.Errorf("first account: %w", err)
+	}
+	return id, nil
+}
+
 func (s *Store) Insert(ctx context.Context, name string, display *string, regionID, quota, objects *int64, at time.Time) (*Bucket, error) {
 	var id int64
 	err := s.pool.QueryRow(ctx, `

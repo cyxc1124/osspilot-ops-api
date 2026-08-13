@@ -152,7 +152,7 @@ func main() {
 		CephMgmtAPIURL:    cfg.CephMgmtAPIURL,
 	})
 	accountsH := accounts.NewHandler(accountStore, regionStore, proj, authH.RequireAdmin)
-	bucketsH := buckets.NewHandler(bucketStore, regionStore, authH.RequireAdmin)
+	bucketsH := buckets.NewHandler(bucketStore, regionStore, settingsH, proj, authH.RequireAdmin)
 	grantsH := grants.NewHandler(grantStore, accountStore, bucketStore, proj, authH.RequireAdmin)
 	lifeH := lifecycle.NewHandler(lifeStore, bucketStore, authH.RequireAdmin)
 	cephH := ceph.NewHandler(settingsH, authH.RequireUser, authH.RequireAdmin)
