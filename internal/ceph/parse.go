@@ -28,6 +28,12 @@ type Instance struct {
 
 func nowRFC3339() string { return time.Now().UTC().Format(time.RFC3339) }
 
+func ParseInstances(payload any) []Instance { return parseInstances(payload) }
+
+func ParseStats(payload any) (requestCount *int, errorRate, p95, p99 *float64) {
+	return parseStats(payload)
+}
+
 func parseInstances(payload any) []Instance {
 	raw := payload
 	if m, ok := payload.(map[string]any); ok {

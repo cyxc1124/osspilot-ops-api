@@ -25,6 +25,10 @@ func newClient() *client {
 	return &client{http: &http.Client{Timeout: 10 * time.Second}}
 }
 
+func Fetch(ctx context.Context, base, path string) (any, error) {
+	return newClient().get(ctx, base, path)
+}
+
 func (c *client) get(ctx context.Context, base, path string) (any, error) {
 	return c.do(ctx, http.MethodGet, base, path, nil, 10*time.Second)
 }

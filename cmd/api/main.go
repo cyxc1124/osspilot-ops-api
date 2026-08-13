@@ -10,6 +10,8 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/cyxc1124/osspilot-ops-api/internal/accounts"
+	"github.com/cyxc1124/osspilot-ops-api/internal/alerts"
+	"github.com/cyxc1124/osspilot-ops-api/internal/audit"
 	"github.com/cyxc1124/osspilot-ops-api/internal/auth"
 	"github.com/cyxc1124/osspilot-ops-api/internal/buckets"
 	"github.com/cyxc1124/osspilot-ops-api/internal/ceph"
@@ -20,6 +22,7 @@ import (
 	"github.com/cyxc1124/osspilot-ops-api/internal/project"
 	"github.com/cyxc1124/osspilot-ops-api/internal/regions"
 	"github.com/cyxc1124/osspilot-ops-api/internal/settings"
+	"github.com/cyxc1124/osspilot-ops-api/internal/stats"
 	"github.com/cyxc1124/osspilot-ops-api/internal/users"
 )
 
@@ -33,6 +36,9 @@ type apiHandlers struct {
 	grants    *grants.Handler
 	lifecycle *lifecycle.Handler
 	ceph      *ceph.Handler
+	audit     *audit.Handler
+	stats     *stats.Handler
+	alerts    *alerts.Handler
 }
 
 func newMux(h apiHandlers) http.Handler {
@@ -65,6 +71,15 @@ func newMux(h apiHandlers) http.Handler {
 	if h.ceph != nil {
 		h.ceph.Register(mux)
 	}
+	if h.audit != nil {
+		h.audit.Register(mux)
+	}
+	if h.stats != nil {
+		h.stats.Register(mux)
+	}
+	if h.alerts != nil {
+		h.alerts.Register(mux)
+	}
 	return httpx.CORS(mux)
 }
 
@@ -92,6 +107,9 @@ func main() {
 	var bucketStore *buckets.Store
 	var grantStore *grants.Store
 	var lifeStore *lifecycle.Store
+	var auditStore *audit.Store
+	var statsStore *stats.Store
+	var alertStore *alerts.Store
 	if cfg.DatabaseURL != "" {
 		pool, err := pgxpool.New(context.Background(), cfg.DatabaseURL)
 		if err != nil {
@@ -107,6 +125,9 @@ func main() {
 		bucketStore = buckets.NewStore(pool)
 		grantStore = grants.NewStore(pool)
 		lifeStore = lifecycle.NewStore(pool)
+		auditStore = audit.NewStore(pool)
+		statsStore = stats.NewStore(pool)
+		alertStore = alerts.NewStore(pool)
 	} else {
 		slog.Warn("DATABASE_URL unset; auth routes return 503")
 	}
@@ -130,11 +151,15 @@ func main() {
 	grantsH := grants.NewHandler(grantStore, accountStore, bucketStore, proj, authH.RequireAdmin)
 	lifeH := lifecycle.NewHandler(lifeStore, bucketStore, authH.RequireAdmin)
 	cephH := ceph.NewHandler(settingsH, authH.RequireUser, authH.RequireAdmin)
+	auditH := audit.NewHandler(auditStore, authH.RequireUser)
+	statsH := stats.NewHandler(statsStore, settingsH, authH.RequireUser)
+	alertH := alerts.NewHandler(alertStore, authH.RequireUser, authH.RequireAdmin)
 	addr := cfg.HTTPAddr
 	slog.Info("listen", "addr", addr)
 	if err := http.ListenAndServe(addr, newMux(apiHandlers{
 		auth: authH, users: usersH, regions: regionH, settings: settingsH,
 		accounts: accountsH, buckets: bucketsH, grants: grantsH, lifecycle: lifeH, ceph: cephH,
+		audit: auditH, stats: statsH, alerts: alertH,
 	})); err != nil {
 		slog.Error("server", "err", err)
 		os.Exit(1)

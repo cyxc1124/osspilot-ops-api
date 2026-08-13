@@ -280,4 +280,149 @@ paths:
           description: restart result
         "503":
           description: management API unavailable
+  /api/stats/overview:
+    get:
+      summary: Platform capacity overview
+      responses:
+        "200":
+          description: counts; used bytes 0 without object stats
+  /api/stats/tenants/ranking:
+    get:
+      summary: Tenant capacity ranking
+      responses:
+        "200":
+          description: items
+  /api/stats/storage-classes:
+    get:
+      summary: Storage class usage
+      responses:
+        "200":
+          description: items
+  /api/stats/traffic:
+    get:
+      summary: Platform traffic
+      responses:
+        "200":
+          description: zeros until access logs
+  /api/stats/traffic/daily:
+    get:
+      summary: Daily traffic
+      responses:
+        "200":
+          description: items
+  /api/stats/performance:
+    get:
+      summary: RGW performance plus audit counts
+      responses:
+        "200":
+          description: stats
+  /api/stats/behavior/users:
+    get:
+      summary: User behavior ranking
+      responses:
+        "200":
+          description: items
+  /api/stats/buckets/ranking:
+    get:
+      summary: Bucket traffic ranking
+      responses:
+        "200":
+          description: items
+  /api/stats/prefixes/ranking:
+    get:
+      summary: Prefix access ranking
+      responses:
+        "200":
+          description: items
+  /api/audit-logs:
+    get:
+      summary: List ops audit logs
+      responses:
+        "200":
+          description: items
+  /api/audit-logs/export:
+    get:
+      summary: Export audit logs as CSV
+      responses:
+        "200":
+          description: csv
+  /api/alerts/rules:
+    get:
+      summary: List alert rules
+      responses:
+        "200":
+          description: items
+    post:
+      summary: Create alert rule
+      responses:
+        "201":
+          description: created
+  /api/alerts/rules/{rule_id}:
+    get:
+      summary: Get alert rule
+      responses:
+        "200":
+          description: rule
+    put:
+      summary: Update alert rule
+      responses:
+        "200":
+          description: updated
+    delete:
+      summary: Delete alert rule
+      responses:
+        "204":
+          description: deleted
+  /api/alerts/channels:
+    get:
+      summary: List notification channels
+      responses:
+        "200":
+          description: items
+    post:
+      summary: Create notification channel
+      responses:
+        "201":
+          description: created
+  /api/alerts/channels/{channel_id}:
+    put:
+      summary: Update notification channel
+      responses:
+        "200":
+          description: updated
+    delete:
+      summary: Delete notification channel
+      responses:
+        "204":
+          description: deleted
+  /api/alerts/events:
+    get:
+      summary: List alert events
+      responses:
+        "200":
+          description: items
+  /api/alerts/events/recent:
+    get:
+      summary: Recent alert events
+      responses:
+        "200":
+          description: items
+  /api/alerts/events/{event_id}/acknowledge:
+    post:
+      summary: Acknowledge an alert event
+      responses:
+        "200":
+          description: event
+  /api/alerts/events/{event_id}/resolve:
+    post:
+      summary: Resolve an alert event
+      responses:
+        "200":
+          description: event
+  /api/alerts/evaluate:
+    post:
+      summary: Evaluate alert rules
+      responses:
+        "200":
+          description: counts
 
