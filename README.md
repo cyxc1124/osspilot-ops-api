@@ -41,3 +41,7 @@ go run ./cmd/worker   # 生命周期清理（读规则 + 设置里的 RGW；可�
 ## 许可
 
 AGPL-3.0-only
+
+## 镜像
+
+`Dockerfile` 产出同一镜像：`command` 为 `api`（默认）、`migrate`、`worker`。入口不自动 migrate。
