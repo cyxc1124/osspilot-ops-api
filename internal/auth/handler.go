@@ -97,12 +97,12 @@ func (h *Handler) login(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, http.StatusForbidden, "Account is disabled")
 		return
 	}
-	if user.Role == "" {
+	if len(user.Roles) == 0 {
 		httpx.Error(w, http.StatusForbidden, "No ops portal access")
 		return
 	}
 
-	token, err := IssueToken(h.secret, h.ttl, user.ID, user.Role)
+	token, err := IssueToken(h.secret, h.ttl, user.ID, user.Roles)
 	if err != nil {
 		httpx.Error(w, http.StatusInternalServerError, "token error")
 		return
@@ -118,7 +118,7 @@ func (h *Handler) login(w http.ResponseWriter, r *http.Request) {
 			ID:                 user.ID,
 			Username:           user.Username,
 			DisplayName:        user.DisplayName,
-			Roles:              []string{user.Role},
+			Roles:              user.Roles,
 			MustChangePassword: user.MustChangePassword,
 		},
 	})
@@ -142,7 +142,7 @@ func (h *Handler) me(w http.ResponseWriter, _ *http.Request, user *User) {
 		Phone:              user.Phone,
 		Status:             user.Status,
 		Portal:             PortalOps,
-		Roles:              []string{user.Role},
+		Roles:              user.Roles,
 		LastLoginAt:        last,
 		MustChangePassword: user.MustChangePassword,
 	})
@@ -219,7 +219,7 @@ func (h *Handler) RequireUser(next UserHandler) http.HandlerFunc {
 
 func (h *Handler) RequireAdmin(next UserHandler) http.HandlerFunc {
 	return h.RequireUser(func(w http.ResponseWriter, r *http.Request, user *User) {
-		if user.Role != "platform_admin" {
+		if !user.HasRole("platform_admin") {
 			httpx.Error(w, http.StatusForbidden, "Platform admin role required")
 			return
 		}

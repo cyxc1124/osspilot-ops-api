@@ -17,11 +17,10 @@ type Claims struct {
 	jwt.RegisteredClaims
 }
 
-func IssueToken(secret string, ttl time.Duration, userID int64, role string) (string, error) {
+func IssueToken(secret string, ttl time.Duration, userID int64, roles []string) (string, error) {
 	now := time.Now()
-	roles := []string{}
-	if role != "" {
-		roles = []string{role}
+	if roles == nil {
+		roles = []string{}
 	}
 	claims := Claims{
 		UserID: userID,

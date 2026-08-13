@@ -11,7 +11,7 @@ const (
 	roleOperator = "ops_operator"
 )
 
-func normalizeRole(names []string) (string, error) {
+func normalizeRoles(names []string) ([]string, error) {
 	invalid := []string{}
 	seen := map[string]struct{}{}
 	for _, n := range names {
@@ -27,21 +27,12 @@ func normalizeRole(names []string) (string, error) {
 	}
 	if len(invalid) > 0 {
 		sort.Strings(invalid)
-		return "", fmt.Errorf("Invalid ops role(s): %s", strings.Join(invalid, ", "))
+		return nil, fmt.Errorf("Invalid ops role(s): %s", strings.Join(invalid, ", "))
 	}
-	// ponytail: one role column until O7; platform_admin wins if both sent
-	if _, ok := seen[roleAdmin]; ok {
-		return roleAdmin, nil
+	out := make([]string, 0, len(seen))
+	for n := range seen {
+		out = append(out, n)
 	}
-	if _, ok := seen[roleOperator]; ok {
-		return roleOperator, nil
-	}
-	return "", nil
-}
-
-func rolesJSON(role string) []string {
-	if role == "" {
-		return []string{}
-	}
-	return []string{role}
+	sort.Strings(out)
+	return out, nil
 }

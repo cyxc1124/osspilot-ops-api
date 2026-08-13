@@ -105,7 +105,7 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request, _ *auth.User) {
 		httpx.Error(w, http.StatusBadRequest, "password must be 8-128 characters")
 		return
 	}
-	role, err := normalizeRole(req.OpsRoles)
+	roles, err := normalizeRoles(req.OpsRoles)
 	if err != nil {
 		httpx.Error(w, http.StatusBadRequest, err.Error())
 		return
@@ -115,7 +115,7 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request, _ *auth.User) {
 		httpx.Error(w, http.StatusInternalServerError, "hash error")
 		return
 	}
-	u, err := h.store.Insert(r.Context(), username, hash, emptyToNil(req.DisplayName), emptyToNil(req.Email), emptyToNil(req.Phone), role, time.Now())
+	u, err := h.store.Insert(r.Context(), username, hash, emptyToNil(req.DisplayName), emptyToNil(req.Email), emptyToNil(req.Phone), roles, time.Now())
 	if errors.Is(err, ErrConflict) {
 		httpx.Error(w, http.StatusConflict, "Username already exists")
 		return
@@ -158,13 +158,14 @@ func (h *Handler) update(w http.ResponseWriter, r *http.Request, actor *auth.Use
 		}
 		u.Status = *req.Status
 	}
+	var roles *[]string
 	if req.OpsRoles != nil {
-		role, err := normalizeRole(req.OpsRoles)
+		names, err := normalizeRoles(req.OpsRoles)
 		if err != nil {
 			httpx.Error(w, http.StatusBadRequest, err.Error())
 			return
 		}
-		u.Role = role
+		roles = &names
 	}
 	if req.DisplayName != nil {
 		u.DisplayName = emptyToNil(req.DisplayName)
@@ -176,7 +177,7 @@ func (h *Handler) update(w http.ResponseWriter, r *http.Request, actor *auth.Use
 		u.Phone = emptyToNil(req.Phone)
 	}
 	u.UpdatedAt = time.Now()
-	out, err := h.store.Update(r.Context(), u)
+	out, err := h.store.Update(r.Context(), u, roles)
 	if err != nil {
 		httpx.Error(w, http.StatusInternalServerError, "database error")
 		return
@@ -284,6 +285,10 @@ func toResponse(u Record) response {
 		s := u.LastLoginAt.UTC().Format(time.RFC3339)
 		last = &s
 	}
+	roles := u.Roles
+	if roles == nil {
+		roles = []string{}
+	}
 	return response{
 		ID:          u.ID,
 		Username:    u.Username,
@@ -291,7 +296,7 @@ func toResponse(u Record) response {
 		Email:       u.Email,
 		Phone:       u.Phone,
 		Status:      u.Status,
-		OpsRoles:    rolesJSON(u.Role),
+		OpsRoles:    roles,
 		LastLoginAt: last,
 		CreatedAt:   u.CreatedAt.UTC().Format(time.RFC3339),
 		UpdatedAt:   u.UpdatedAt.UTC().Format(time.RFC3339),
