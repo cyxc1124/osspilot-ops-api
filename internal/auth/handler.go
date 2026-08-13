@@ -32,29 +32,32 @@ type loginRequest struct {
 }
 
 type userBrief struct {
-	ID          int64    `json:"id"`
-	Username    string   `json:"username"`
-	DisplayName *string  `json:"display_name"`
-	Roles       []string `json:"roles"`
+	ID                 int64    `json:"id"`
+	Username           string   `json:"username"`
+	DisplayName        *string  `json:"display_name"`
+	Roles              []string `json:"roles"`
+	MustChangePassword bool     `json:"must_change_password"`
 }
 
 type loginResponse struct {
-	AccessToken string    `json:"access_token"`
-	TokenType   string    `json:"token_type"`
-	ExpiresIn   int       `json:"expires_in"`
-	User        userBrief `json:"user"`
+	AccessToken        string    `json:"access_token"`
+	TokenType          string    `json:"token_type"`
+	ExpiresIn          int       `json:"expires_in"`
+	MustChangePassword bool      `json:"must_change_password"`
+	User               userBrief `json:"user"`
 }
 
 type meResponse struct {
-	ID          int64    `json:"id"`
-	Username    string   `json:"username"`
-	DisplayName *string  `json:"display_name"`
-	Email       *string  `json:"email"`
-	Phone       *string  `json:"phone"`
-	Status      string   `json:"status"`
-	Portal      string   `json:"portal"`
-	Roles       []string `json:"roles"`
-	LastLoginAt *string  `json:"last_login_at"`
+	ID                 int64    `json:"id"`
+	Username           string   `json:"username"`
+	DisplayName        *string  `json:"display_name"`
+	Email              *string  `json:"email"`
+	Phone              *string  `json:"phone"`
+	Status             string   `json:"status"`
+	Portal             string   `json:"portal"`
+	Roles              []string `json:"roles"`
+	LastLoginAt        *string  `json:"last_login_at"`
+	MustChangePassword bool     `json:"must_change_password"`
 }
 
 type passwordChangeRequest struct {
@@ -107,14 +110,16 @@ func (h *Handler) login(w http.ResponseWriter, r *http.Request) {
 	now := time.Now()
 	_ = h.store.TouchLogin(r.Context(), user.ID, now)
 	httpx.JSON(w, http.StatusOK, loginResponse{
-		AccessToken: token,
-		TokenType:   "bearer",
-		ExpiresIn:   int(h.ttl.Seconds()),
+		AccessToken:        token,
+		TokenType:          "bearer",
+		ExpiresIn:          int(h.ttl.Seconds()),
+		MustChangePassword: user.MustChangePassword,
 		User: userBrief{
-			ID:          user.ID,
-			Username:    user.Username,
-			DisplayName: user.DisplayName,
-			Roles:       []string{user.Role},
+			ID:                 user.ID,
+			Username:           user.Username,
+			DisplayName:        user.DisplayName,
+			Roles:              []string{user.Role},
+			MustChangePassword: user.MustChangePassword,
 		},
 	})
 }
@@ -130,15 +135,16 @@ func (h *Handler) me(w http.ResponseWriter, _ *http.Request, user *User) {
 		last = &s
 	}
 	httpx.JSON(w, http.StatusOK, meResponse{
-		ID:          user.ID,
-		Username:    user.Username,
-		DisplayName: user.DisplayName,
-		Email:       user.Email,
-		Phone:       user.Phone,
-		Status:      user.Status,
-		Portal:      PortalOps,
-		Roles:       []string{user.Role},
-		LastLoginAt: last,
+		ID:                 user.ID,
+		Username:           user.Username,
+		DisplayName:        user.DisplayName,
+		Email:              user.Email,
+		Phone:              user.Phone,
+		Status:             user.Status,
+		Portal:             PortalOps,
+		Roles:              []string{user.Role},
+		LastLoginAt:        last,
+		MustChangePassword: user.MustChangePassword,
 	})
 }
 
@@ -154,6 +160,10 @@ func (h *Handler) changePassword(w http.ResponseWriter, r *http.Request, user *U
 	}
 	if len(req.NewPassword) < 8 || len(req.NewPassword) > 128 {
 		httpx.Error(w, http.StatusBadRequest, "new_password must be 8-128 characters")
+		return
+	}
+	if req.OldPassword == req.NewPassword {
+		httpx.Error(w, http.StatusBadRequest, "new_password must differ from old_password")
 		return
 	}
 	if !CheckPassword(req.OldPassword, user.PasswordHash) {
@@ -197,6 +207,10 @@ func (h *Handler) requireUser(next userHandler) http.HandlerFunc {
 		}
 		if user == nil || user.Status != "active" {
 			httpx.Error(w, http.StatusUnauthorized, "invalid token")
+			return
+		}
+		if user.MustChangePassword && r.URL.Path != "/api/password/change" && r.URL.Path != "/api/me" && r.URL.Path != "/api/logout" {
+			httpx.Error(w, http.StatusForbidden, "password change required")
 			return
 		}
 		next(w, r, user)
