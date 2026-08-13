@@ -111,3 +111,18 @@ paths:
           description: deleted
         "409":
           description: default region
+  /api/settings:
+    get:
+      summary: Platform settings (secrets masked)
+      responses:
+        "200":
+          description: settings
+    put:
+      summary: Update platform settings
+      responses:
+        "200":
+          description: updated
+        "400":
+          description: no fields
+        "403":
+          description: not platform_admin

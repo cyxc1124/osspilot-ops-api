@@ -13,10 +13,11 @@ import (
 	"github.com/cyxc1124/osspilot-ops-api/internal/config"
 	"github.com/cyxc1124/osspilot-ops-api/internal/httpx"
 	"github.com/cyxc1124/osspilot-ops-api/internal/regions"
+	"github.com/cyxc1124/osspilot-ops-api/internal/settings"
 	"github.com/cyxc1124/osspilot-ops-api/internal/users"
 )
 
-func newMux(authH *auth.Handler, usersH *users.Handler, regionH *regions.Handler) http.Handler {
+func newMux(authH *auth.Handler, usersH *users.Handler, regionH *regions.Handler, settingsH *settings.Handler) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", healthz)
 	if authH != nil {
@@ -27,6 +28,9 @@ func newMux(authH *auth.Handler, usersH *users.Handler, regionH *regions.Handler
 	}
 	if regionH != nil {
 		regionH.Register(mux)
+	}
+	if settingsH != nil {
+		settingsH.Register(mux)
 	}
 	return httpx.CORS(mux)
 }
@@ -45,6 +49,7 @@ func main() {
 	var authStore *auth.Store
 	var userStore *users.Store
 	var regionStore *regions.Store
+	var settingsStore *settings.Store
 	if cfg.DatabaseURL != "" {
 		pool, err := pgxpool.New(context.Background(), cfg.DatabaseURL)
 		if err != nil {
@@ -55,6 +60,7 @@ func main() {
 		authStore = auth.NewStore(pool)
 		userStore = users.NewStore(pool)
 		regionStore = regions.NewStore(pool)
+		settingsStore = settings.NewStore(pool)
 	} else {
 		slog.Warn("DATABASE_URL unset; auth routes return 503")
 	}
@@ -62,9 +68,20 @@ func main() {
 	authH := auth.NewHandler(authStore, cfg.JWTSecret, cfg.TokenTTL)
 	usersH := users.NewHandler(userStore, authH.RequireAdmin)
 	regionH := regions.NewHandler(regionStore, authH.RequireUser, authH.RequireAdmin)
+	settingsH := settings.NewHandler(settingsStore, authH.RequireUser, authH.RequireAdmin, settings.Fallbacks{
+		S3Endpoint:        cfg.S3Endpoint,
+		RGWAccessKey:      cfg.RGWAccessKey,
+		RGWSecretKey:      cfg.RGWSecretKey,
+		DownloadCDNURL:    cfg.DownloadCDNURL,
+		PreviewCDNURL:     cfg.PreviewCDNURL,
+		ObjectHTTPDomain:  cfg.ObjectHTTPDomain,
+		ObjectHTTPSDomain: cfg.ObjectHTTPSDomain,
+		OfficeURL:         cfg.OfficeURL,
+		CephMgmtAPIURL:    cfg.CephMgmtAPIURL,
+	})
 	addr := cfg.HTTPAddr
 	slog.Info("listen", "addr", addr)
-	if err := http.ListenAndServe(addr, newMux(authH, usersH, regionH)); err != nil {
+	if err := http.ListenAndServe(addr, newMux(authH, usersH, regionH, settingsH)); err != nil {
 		slog.Error("server", "err", err)
 		os.Exit(1)
 	}
