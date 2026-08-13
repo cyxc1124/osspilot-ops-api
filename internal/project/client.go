@@ -140,14 +140,20 @@ func (c *Client) ReviewAccess(ctx context.Context, username, action string, note
 	return &out, nil
 }
 
-// Forward streams a tenant internal response (status + body + content-type) to w.
-func (c *Client) Forward(ctx context.Context, method, path string, body io.Reader, contentType string, w http.ResponseWriter) error {
+type RawResponse struct {
+	Status      int
+	ContentType string
+	Body        []byte
+}
+
+// DoRaw calls a tenant internal path and returns status + body (capped at 8MiB).
+func (c *Client) DoRaw(ctx context.Context, method, path string, body io.Reader, contentType string) (*RawResponse, error) {
 	if c == nil {
-		return &HTTPError{Status: http.StatusServiceUnavailable, Detail: "tenant projection is not configured"}
+		return nil, &HTTPError{Status: http.StatusServiceUnavailable, Detail: "tenant projection is not configured"}
 	}
 	req, err := http.NewRequestWithContext(ctx, method, c.base+path, body)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	req.Header.Set("Authorization", "Bearer "+c.secret)
 	if contentType != "" {
@@ -155,17 +161,14 @@ func (c *Client) Forward(ctx context.Context, method, path string, body io.Reade
 	}
 	res, err := c.http.Do(req)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer res.Body.Close()
-	for _, k := range []string{"Content-Type"} {
-		if v := res.Header.Get(k); v != "" {
-			w.Header().Set(k, v)
-		}
+	raw, err := io.ReadAll(io.LimitReader(res.Body, 8<<20))
+	if err != nil {
+		return nil, err
 	}
-	w.WriteHeader(res.StatusCode)
-	_, _ = io.Copy(w, io.LimitReader(res.Body, 8<<20))
-	return nil
+	return &RawResponse{Status: res.StatusCode, ContentType: res.Header.Get("Content-Type"), Body: raw}, nil
 }
 
 func (c *Client) do(ctx context.Context, method, path string, body any) error {

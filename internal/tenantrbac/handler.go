@@ -61,8 +61,22 @@ func (h *Handler) proxy(w http.ResponseWriter, r *http.Request, _ *auth.User) {
 	if q := r.URL.RawQuery; q != "" {
 		path += "?" + q
 	}
-	ct := r.Header.Get("Content-Type")
-	if err := h.project.Forward(r.Context(), r.Method, path, r.Body, ct, w); err != nil {
+	raw, err := h.project.DoRaw(r.Context(), r.Method, path, r.Body, r.Header.Get("Content-Type"))
+	if err != nil {
 		httpx.Error(w, http.StatusBadGateway, "tenant api error")
+		return
 	}
+	body := raw.Body
+	if raw.Status >= 200 && raw.Status < 300 {
+		if remapped, err := remapAccountID(body, acct.ID); err == nil {
+			body = remapped
+		}
+	}
+	if raw.ContentType != "" {
+		w.Header().Set("Content-Type", raw.ContentType)
+	} else if len(body) > 0 {
+		w.Header().Set("Content-Type", "application/json")
+	}
+	w.WriteHeader(raw.Status)
+	_, _ = w.Write(body)
 }
