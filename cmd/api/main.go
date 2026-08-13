@@ -12,13 +12,17 @@ import (
 	"github.com/cyxc1124/osspilot-ops-api/internal/auth"
 	"github.com/cyxc1124/osspilot-ops-api/internal/config"
 	"github.com/cyxc1124/osspilot-ops-api/internal/httpx"
+	"github.com/cyxc1124/osspilot-ops-api/internal/users"
 )
 
-func newMux(h *auth.Handler) http.Handler {
+func newMux(authH *auth.Handler, usersH *users.Handler) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", healthz)
-	if h != nil {
-		h.Register(mux)
+	if authH != nil {
+		authH.Register(mux)
+	}
+	if usersH != nil {
+		usersH.Register(mux)
 	}
 	return httpx.CORS(mux)
 }
@@ -34,7 +38,8 @@ func main() {
 		slog.Warn("JWT_SECRET unset; using development default")
 	}
 
-	var store *auth.Store
+	var authStore *auth.Store
+	var userStore *users.Store
 	if cfg.DatabaseURL != "" {
 		pool, err := pgxpool.New(context.Background(), cfg.DatabaseURL)
 		if err != nil {
@@ -42,15 +47,17 @@ func main() {
 			os.Exit(1)
 		}
 		defer pool.Close()
-		store = auth.NewStore(pool)
+		authStore = auth.NewStore(pool)
+		userStore = users.NewStore(pool)
 	} else {
 		slog.Warn("DATABASE_URL unset; auth routes return 503")
 	}
 
-	h := auth.NewHandler(store, cfg.JWTSecret, cfg.TokenTTL)
+	authH := auth.NewHandler(authStore, cfg.JWTSecret, cfg.TokenTTL)
+	usersH := users.NewHandler(userStore, authH.RequireAdmin)
 	addr := cfg.HTTPAddr
 	slog.Info("listen", "addr", addr)
-	if err := http.ListenAndServe(addr, newMux(h)); err != nil {
+	if err := http.ListenAndServe(addr, newMux(authH, usersH)); err != nil {
 		slog.Error("server", "err", err)
 		os.Exit(1)
 	}

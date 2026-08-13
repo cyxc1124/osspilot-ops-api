@@ -44,3 +44,42 @@ paths:
       responses:
         "200":
           description: changed
+  /api/users:
+    get:
+      summary: List ops users
+      responses:
+        "200":
+          description: items and total
+        "403":
+          description: not platform_admin
+    post:
+      summary: Create ops user
+      responses:
+        "201":
+          description: created
+        "409":
+          description: username taken
+  /api/users/{user_id}:
+    get:
+      summary: Get ops user
+      responses:
+        "200":
+          description: user
+        "404":
+          description: not found
+    put:
+      summary: Update ops user
+      responses:
+        "200":
+          description: updated
+    delete:
+      summary: Delete ops user
+      responses:
+        "204":
+          description: deleted
+  /api/users/{user_id}/password/reset:
+    post:
+      summary: Reset ops user password
+      responses:
+        "200":
+          description: Password reset
