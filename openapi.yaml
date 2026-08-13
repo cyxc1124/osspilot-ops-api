@@ -215,6 +215,29 @@ paths:
       responses:
         "204":
           description: deleted
+  /api/tenant-users/{user_id}/rbac/{rest}:
+    get:
+      summary: Proxy tenant RBAC (groups/templates/permissions) by username
+      responses:
+        "200":
+          description: tenant response
+        "503":
+          description: tenant projection unset
+    post:
+      summary: Proxy tenant RBAC write
+      responses:
+        "200":
+          description: tenant response
+    put:
+      summary: Proxy tenant RBAC update
+      responses:
+        "200":
+          description: tenant response
+    delete:
+      summary: Proxy tenant RBAC delete
+      responses:
+        "200":
+          description: tenant response
   /api/tenant-users/{user_id}/buckets:
     get:
       summary: List buckets granted to a tenant account

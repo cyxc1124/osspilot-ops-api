@@ -140,6 +140,34 @@ func (c *Client) ReviewAccess(ctx context.Context, username, action string, note
 	return &out, nil
 }
 
+// Forward streams a tenant internal response (status + body + content-type) to w.
+func (c *Client) Forward(ctx context.Context, method, path string, body io.Reader, contentType string, w http.ResponseWriter) error {
+	if c == nil {
+		return &HTTPError{Status: http.StatusServiceUnavailable, Detail: "tenant projection is not configured"}
+	}
+	req, err := http.NewRequestWithContext(ctx, method, c.base+path, body)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Authorization", "Bearer "+c.secret)
+	if contentType != "" {
+		req.Header.Set("Content-Type", contentType)
+	}
+	res, err := c.http.Do(req)
+	if err != nil {
+		return err
+	}
+	defer res.Body.Close()
+	for _, k := range []string{"Content-Type"} {
+		if v := res.Header.Get(k); v != "" {
+			w.Header().Set(k, v)
+		}
+	}
+	w.WriteHeader(res.StatusCode)
+	_, _ = io.Copy(w, io.LimitReader(res.Body, 8<<20))
+	return nil
+}
+
 func (c *Client) do(ctx context.Context, method, path string, body any) error {
 	return c.doJSON(ctx, method, path, body, nil)
 }

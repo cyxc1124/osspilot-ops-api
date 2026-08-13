@@ -24,23 +24,25 @@ import (
 	"github.com/cyxc1124/osspilot-ops-api/internal/regions"
 	"github.com/cyxc1124/osspilot-ops-api/internal/settings"
 	"github.com/cyxc1124/osspilot-ops-api/internal/stats"
+	"github.com/cyxc1124/osspilot-ops-api/internal/tenantrbac"
 	"github.com/cyxc1124/osspilot-ops-api/internal/users"
 )
 
 type apiHandlers struct {
-	auth      *auth.Handler
-	users     *users.Handler
-	regions   *regions.Handler
-	settings  *settings.Handler
-	accounts  *accounts.Handler
-	buckets   *buckets.Handler
-	grants    *grants.Handler
-	lifecycle *lifecycle.Handler
-	ceph      *ceph.Handler
-	audit     *audit.Handler
-	stats     *stats.Handler
-	alerts    *alerts.Handler
-	access    *access.Handler
+	auth       *auth.Handler
+	users      *users.Handler
+	regions    *regions.Handler
+	settings   *settings.Handler
+	accounts   *accounts.Handler
+	buckets    *buckets.Handler
+	grants     *grants.Handler
+	lifecycle  *lifecycle.Handler
+	ceph       *ceph.Handler
+	audit      *audit.Handler
+	stats      *stats.Handler
+	alerts     *alerts.Handler
+	access     *access.Handler
+	tenantrbac *tenantrbac.Handler
 }
 
 func newMux(h apiHandlers) http.Handler {
@@ -84,6 +86,9 @@ func newMux(h apiHandlers) http.Handler {
 	}
 	if h.access != nil {
 		h.access.Register(mux)
+	}
+	if h.tenantrbac != nil {
+		h.tenantrbac.Register(mux)
 	}
 	return httpx.CORS(mux)
 }
@@ -160,12 +165,13 @@ func main() {
 	statsH := stats.NewHandler(statsStore, settingsH, authH.RequireUser)
 	alertH := alerts.NewHandler(alertStore, authH.RequireUser, authH.RequireAdmin)
 	accessH := access.NewHandler(accountStore, proj, auditStore, authH.RequireAdmin)
+	rbacH := tenantrbac.NewHandler(accountStore, proj, authH.RequireAdmin)
 	addr := cfg.HTTPAddr
 	slog.Info("listen", "addr", addr)
 	if err := http.ListenAndServe(addr, newMux(apiHandlers{
 		auth: authH, users: usersH, regions: regionH, settings: settingsH,
 		accounts: accountsH, buckets: bucketsH, grants: grantsH, lifecycle: lifeH, ceph: cephH,
-		audit: auditH, stats: statsH, alerts: alertH, access: accessH,
+		audit: auditH, stats: statsH, alerts: alertH, access: accessH, tenantrbac: rbacH,
 	})); err != nil {
 		slog.Error("server", "err", err)
 		os.Exit(1)
