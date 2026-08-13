@@ -207,4 +207,31 @@ paths:
           description: revoked
         "404":
           description: grant not found
+  /api/lifecycle-rules:
+    get:
+      summary: List lifecycle rules
+      responses:
+        "200":
+          description: items and total
+  /api/buckets/{bucket_id}/lifecycle-rules:
+    post:
+      summary: Create a lifecycle rule for a registered bucket
+      responses:
+        "201":
+          description: created
+        "404":
+          description: bucket not found
+  /api/lifecycle-rules/{rule_id}:
+    put:
+      summary: Update a lifecycle rule
+      responses:
+        "200":
+          description: updated
+        "404":
+          description: not found
+    delete:
+      summary: Delete a lifecycle rule
+      responses:
+        "204":
+          description: deleted
 

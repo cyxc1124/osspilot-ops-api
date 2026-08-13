@@ -19,6 +19,7 @@ go run ./cmd/api
 - `GET|POST /api/tenant-users`、`GET|PUT|DELETE /api/tenant-users/{user_id}`、`POST .../password/reset`（仅 platform_admin）
 - `GET|POST /api/buckets`、`POST /api/buckets/import-batch`（仅 platform_admin；不访问 RGW）
 - `GET|PUT /api/tenant-users/{user_id}/buckets`、`DELETE .../buckets/{bucket_id}`（授权并投影到租户 API）
+- `GET /api/lifecycle-rules`、`POST /api/buckets/{bucket_id}/lifecycle-rules`、`PUT|DELETE /api/lifecycle-rules/{rule_id}`（仅 platform_admin；只存规则，不跑清理任务）
 
 迁移后内置 `admin` / `admin`，`must_change_password=true`。首次登录后除改密、`/api/me`、登出外一律 403。新密码至少 8 位且不能与旧密码相同。
 

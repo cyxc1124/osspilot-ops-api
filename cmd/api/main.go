@@ -15,35 +15,50 @@ import (
 	"github.com/cyxc1124/osspilot-ops-api/internal/config"
 	"github.com/cyxc1124/osspilot-ops-api/internal/grants"
 	"github.com/cyxc1124/osspilot-ops-api/internal/httpx"
+	"github.com/cyxc1124/osspilot-ops-api/internal/lifecycle"
 	"github.com/cyxc1124/osspilot-ops-api/internal/project"
 	"github.com/cyxc1124/osspilot-ops-api/internal/regions"
 	"github.com/cyxc1124/osspilot-ops-api/internal/settings"
 	"github.com/cyxc1124/osspilot-ops-api/internal/users"
 )
 
-func newMux(authH *auth.Handler, usersH *users.Handler, regionH *regions.Handler, settingsH *settings.Handler, accountsH *accounts.Handler, bucketsH *buckets.Handler, grantsH *grants.Handler) http.Handler {
+type apiHandlers struct {
+	auth      *auth.Handler
+	users     *users.Handler
+	regions   *regions.Handler
+	settings  *settings.Handler
+	accounts  *accounts.Handler
+	buckets   *buckets.Handler
+	grants    *grants.Handler
+	lifecycle *lifecycle.Handler
+}
+
+func newMux(h apiHandlers) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", healthz)
-	if authH != nil {
-		authH.Register(mux)
+	if h.auth != nil {
+		h.auth.Register(mux)
 	}
-	if usersH != nil {
-		usersH.Register(mux)
+	if h.users != nil {
+		h.users.Register(mux)
 	}
-	if regionH != nil {
-		regionH.Register(mux)
+	if h.regions != nil {
+		h.regions.Register(mux)
 	}
-	if settingsH != nil {
-		settingsH.Register(mux)
+	if h.settings != nil {
+		h.settings.Register(mux)
 	}
-	if accountsH != nil {
-		accountsH.Register(mux)
+	if h.accounts != nil {
+		h.accounts.Register(mux)
 	}
-	if bucketsH != nil {
-		bucketsH.Register(mux)
+	if h.buckets != nil {
+		h.buckets.Register(mux)
 	}
-	if grantsH != nil {
-		grantsH.Register(mux)
+	if h.grants != nil {
+		h.grants.Register(mux)
+	}
+	if h.lifecycle != nil {
+		h.lifecycle.Register(mux)
 	}
 	return httpx.CORS(mux)
 }
@@ -71,6 +86,7 @@ func main() {
 	var accountStore *accounts.Store
 	var bucketStore *buckets.Store
 	var grantStore *grants.Store
+	var lifeStore *lifecycle.Store
 	if cfg.DatabaseURL != "" {
 		pool, err := pgxpool.New(context.Background(), cfg.DatabaseURL)
 		if err != nil {
@@ -85,6 +101,7 @@ func main() {
 		accountStore = accounts.NewStore(pool)
 		bucketStore = buckets.NewStore(pool)
 		grantStore = grants.NewStore(pool)
+		lifeStore = lifecycle.NewStore(pool)
 	} else {
 		slog.Warn("DATABASE_URL unset; auth routes return 503")
 	}
@@ -106,9 +123,13 @@ func main() {
 	accountsH := accounts.NewHandler(accountStore, regionStore, proj, authH.RequireAdmin)
 	bucketsH := buckets.NewHandler(bucketStore, regionStore, authH.RequireAdmin)
 	grantsH := grants.NewHandler(grantStore, accountStore, bucketStore, proj, authH.RequireAdmin)
+	lifeH := lifecycle.NewHandler(lifeStore, bucketStore, authH.RequireAdmin)
 	addr := cfg.HTTPAddr
 	slog.Info("listen", "addr", addr)
-	if err := http.ListenAndServe(addr, newMux(authH, usersH, regionH, settingsH, accountsH, bucketsH, grantsH)); err != nil {
+	if err := http.ListenAndServe(addr, newMux(apiHandlers{
+		auth: authH, users: usersH, regions: regionH, settings: settingsH,
+		accounts: accountsH, buckets: bucketsH, grants: grantsH, lifecycle: lifeH,
+	})); err != nil {
 		slog.Error("server", "err", err)
 		os.Exit(1)
 	}
