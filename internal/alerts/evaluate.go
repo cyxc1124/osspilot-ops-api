@@ -157,6 +157,38 @@ func (e *Evaluator) projectEvent(ctx context.Context, rule Rule, tenantID, bucke
 	_ = e.project.PutAlert(ctx, body)
 }
 
+func unseenIDs(open []Event, seen map[int64]bool, pick func(Event) *int64) []int64 {
+	var out []int64
+	for _, ev := range open {
+		id := pick(ev)
+		if id == nil || seen[*id] {
+			continue
+		}
+		out = append(out, ev.ID)
+	}
+	return out
+}
+
+func (e *Evaluator) resolveUnseen(ctx context.Context, rule Rule, seen map[int64]bool, pick func(Event) *int64) (int, error) {
+	open, err := e.store.ListOpenByRule(ctx, rule.ID)
+	if err != nil {
+		return 0, err
+	}
+	n := 0
+	for _, ev := range open {
+		id := pick(ev)
+		if id == nil || seen[*id] {
+			continue
+		}
+		r, err := e.resolveAndProject(ctx, rule, ev.TenantID, ev.BucketID)
+		if err != nil {
+			return n, err
+		}
+		n += r
+	}
+	return n, nil
+}
+
 func (e *Evaluator) resolveAndProject(ctx context.Context, rule Rule, tenantID, bucketID *int64) (int, error) {
 	n, err := e.store.ResolveOpen(ctx, rule.ID, tenantID, bucketID)
 	if err != nil {
@@ -173,7 +205,7 @@ func (e *Evaluator) evalTenantQuota(ctx context.Context, rule Rule, usage *proje
 		return 0, 0, nil
 	}
 	th := thresholdPercent(rule.Config, 1.0)
-	tenants, err := e.stats.Tenants(ctx, 1000)
+	tenants, err := e.stats.Tenants(ctx)
 	if err != nil {
 		return 0, 0, err
 	}
@@ -184,6 +216,7 @@ func (e *Evaluator) evalTenantQuota(ctx context.Context, rule Rule, usage *proje
 		}
 	}
 	newN, resN := 0, 0
+	seen := map[int64]bool{}
 	for _, t := range tenants {
 		if t.Status != "active" {
 			continue
@@ -202,6 +235,7 @@ func (e *Evaluator) evalTenantQuota(ctx context.Context, rule Rule, usage *proje
 		if !ok {
 			continue
 		}
+		seen[t.ID] = true
 		tid := t.ID
 		if pct+1e-12 >= th {
 			name := t.Name
@@ -226,7 +260,11 @@ func (e *Evaluator) evalTenantQuota(ctx context.Context, rule Rule, usage *proje
 			resN += n
 		}
 	}
-	return newN, resN, nil
+	n, err := e.resolveUnseen(ctx, rule, seen, func(ev Event) *int64 { return ev.TenantID })
+	if err != nil {
+		return newN, resN, err
+	}
+	return newN, resN + n, nil
 }
 
 func (e *Evaluator) evalBucketCapacity(ctx context.Context, rule Rule, usage *project.Usage) (int, int, error) {
@@ -249,6 +287,7 @@ func (e *Evaluator) evalBucketCapacity(ctx context.Context, rule Rule, usage *pr
 		}
 	}
 	newN, resN := 0, 0
+	seen := map[int64]bool{}
 	for _, b := range rows {
 		if b.Status != "active" {
 			continue
@@ -261,6 +300,7 @@ func (e *Evaluator) evalBucketCapacity(ctx context.Context, rule Rule, usage *pr
 		if !ok {
 			continue
 		}
+		seen[b.ID] = true
 		bid := b.ID
 		bname := b.BucketName
 		if pct+1e-12 >= th {
@@ -275,14 +315,18 @@ func (e *Evaluator) evalBucketCapacity(ctx context.Context, rule Rule, usage *pr
 				newN++
 			}
 		} else {
-			n, err := e.store.ResolveOpen(ctx, rule.ID, nil, &bid)
+			n, err := e.resolveAndProject(ctx, rule, nil, &bid)
 			if err != nil {
 				return newN, resN, err
 			}
 			resN += n
 		}
 	}
-	return newN, resN, nil
+	n, err := e.resolveUnseen(ctx, rule, seen, func(ev Event) *int64 { return ev.BucketID })
+	if err != nil {
+		return newN, resN, err
+	}
+	return newN, resN + n, nil
 }
 
 func (e *Evaluator) evalRGW5xx(ctx context.Context, rule Rule) (int, int, error) {

@@ -44,10 +44,10 @@ func (s *Store) Overview(ctx context.Context) (Overview, error) {
 	return o, nil
 }
 
-func (s *Store) Tenants(ctx context.Context, limit int) ([]TenantRow, error) {
+func (s *Store) Tenants(ctx context.Context) ([]TenantRow, error) {
 	rows, err := s.pool.Query(ctx, `
 		SELECT id, username, display_name, status, quota_bytes
-		FROM tenant_accounts ORDER BY id LIMIT $1`, limit)
+		FROM tenant_accounts ORDER BY id`)
 	if err != nil {
 		return nil, fmt.Errorf("list tenants: %w", err)
 	}

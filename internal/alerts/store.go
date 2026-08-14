@@ -363,6 +363,15 @@ func (s *Store) InsertEvent(ctx context.Context, e Event) (*Event, error) {
 	return s.GetEvent(ctx, id)
 }
 
+func (s *Store) ListOpenByRule(ctx context.Context, ruleID int64) ([]Event, error) {
+	rows, err := s.pool.Query(ctx, eventSelect+` WHERE rule_id=$1 AND status IN ('firing','acknowledged')`, ruleID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return scanEvents(rows)
+}
+
 func (s *Store) ResolveOpen(ctx context.Context, ruleID int64, tenantID, bucketID *int64) (int, error) {
 	q := `UPDATE alert_events SET status='resolved', resolved_at=now() WHERE rule_id=$1 AND status IN ('firing','acknowledged')`
 	args := []any{ruleID}

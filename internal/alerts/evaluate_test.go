@@ -39,6 +39,15 @@ func TestFingerprint(t *testing.T) {
 	}
 }
 
+func TestUnseenIDs(t *testing.T) {
+	tid, gone := int64(1), int64(9)
+	open := []Event{{ID: 1, TenantID: &tid}, {ID: 2, TenantID: &gone}, {ID: 3}}
+	got := unseenIDs(open, map[int64]bool{1: true}, func(ev Event) *int64 { return ev.TenantID })
+	if len(got) != 1 || got[0] != 2 {
+		t.Fatalf("%v", got)
+	}
+}
+
 func TestThresholdPercent(t *testing.T) {
 	raw := json.RawMessage(`{"threshold_percent":0.9}`)
 	if got := thresholdPercent(raw, 0.8); got != 0.9 {

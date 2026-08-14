@@ -100,7 +100,7 @@ func (h *Handler) tenants(w http.ResponseWriter, r *http.Request, _ *auth.User) 
 		}
 		limit = n
 	}
-	rows, err := h.store.Tenants(r.Context(), limit)
+	rows, err := h.store.Tenants(r.Context())
 	if err != nil {
 		httpx.Error(w, http.StatusInternalServerError, "database error")
 		return
@@ -111,8 +111,11 @@ func (h *Handler) tenants(w http.ResponseWriter, r *http.Request, _ *auth.User) 
 			byBucket[b.BucketName] = b
 		}
 	}
-	items := make([]map[string]any, 0, len(rows))
+	ranked := make([]tenantRank, 0, len(rows))
 	for _, t := range rows {
+		if t.Status != "active" {
+			continue
+		}
 		used, objects, trash := int64(0), int64(0), int64(0)
 		if h.grants != nil {
 			if gs, err := h.grants.List(r.Context(), t.ID); err == nil {
@@ -125,12 +128,16 @@ func (h *Handler) tenants(w http.ResponseWriter, r *http.Request, _ *auth.User) 
 				}
 			}
 		}
-		items = append(items, map[string]any{
-			"tenant_id": t.ID, "name": t.Name, "display_name": t.DisplayName, "status": t.Status,
-			"quota_bytes": t.QuotaBytes, "used_bytes": used, "object_count": objects, "trash_bytes": trash,
-			"usage_percent": usagePercent(used, t.QuotaBytes),
+		ranked = append(ranked, tenantRank{
+			used: used,
+			item: map[string]any{
+				"tenant_id": t.ID, "name": t.Name, "display_name": t.DisplayName, "status": t.Status,
+				"quota_bytes": t.QuotaBytes, "used_bytes": used, "object_count": objects, "trash_bytes": trash,
+				"usage_percent": usagePercent(used, t.QuotaBytes),
+			},
 		})
 	}
+	items := topByUsed(ranked, limit)
 	httpx.JSON(w, http.StatusOK, map[string]any{"items": items})
 }
 
