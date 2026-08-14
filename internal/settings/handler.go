@@ -129,6 +129,7 @@ func (h *Handler) get(w http.ResponseWriter, r *http.Request, _ *auth.User) {
 		httpx.Error(w, http.StatusInternalServerError, "database error")
 		return
 	}
+	h.projectTenant(r.Context(), out)
 	httpx.JSON(w, http.StatusOK, out)
 }
 
@@ -178,6 +179,17 @@ func (h *Handler) projectTenant(ctx context.Context, out publicSettings) {
 					break
 				}
 			}
+		}
+	}
+	if rt, err := h.Runtime(ctx); err == nil {
+		if settings["s3_endpoint"] == "" && rt.S3Endpoint != "" {
+			settings["s3_endpoint"] = rt.S3Endpoint
+		}
+		if rt.RGWAccessKey != "" {
+			settings["rgw_access_key"] = rt.RGWAccessKey
+		}
+		if rt.RGWSecretKey != "" {
+			settings["rgw_secret_key"] = rt.RGWSecretKey
 		}
 	}
 	if err := h.project.PutSettings(ctx, settings); err != nil {
