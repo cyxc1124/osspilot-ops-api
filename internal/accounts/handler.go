@@ -313,6 +313,9 @@ func (h *Handler) pushAccount(r *http.Request, u Record, must *bool) error {
 		Phone:              u.Phone,
 		Status:             u.Status,
 		MustChangePassword: must,
+		QuotaBytes:         u.QuotaBytes,
+		ObjectLimit:        u.ObjectLimit,
+		DailyUploadBytes:   u.DailyUploadBytes,
 	})
 }
 

@@ -34,6 +34,9 @@ type Account struct {
 	Phone              *string `json:"phone"`
 	Status             string  `json:"status"`
 	MustChangePassword *bool   `json:"must_change_password,omitempty"`
+	QuotaBytes         *int64  `json:"quota_bytes"`
+	ObjectLimit        *int64  `json:"object_limit"`
+	DailyUploadBytes   *int64  `json:"daily_upload_bytes"`
 }
 
 type BucketItem struct {
