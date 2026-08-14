@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"net/http"
 
 	"github.com/cyxc1124/osspilot-ops-api/internal/buckets"
 	"github.com/cyxc1124/osspilot-ops-api/internal/grants"
@@ -18,6 +19,7 @@ type Evaluator struct {
 	buckets *buckets.Store
 	grants  *grants.Store
 	project *project.Client
+	http    *http.Client
 }
 
 func (e *Evaluator) Run(ctx context.Context) (evaluated, created, resolved int, err error) {
@@ -88,12 +90,16 @@ func (e *Evaluator) fire(ctx context.Context, rule Rule, title, message string, 
 	}
 	raw, _ := json.Marshal(details)
 	rid := rule.ID
-	_, err = e.store.InsertEvent(ctx, Event{
+	ev, err := e.store.InsertEvent(ctx, Event{
 		RuleID: &rid, RuleType: rule.RuleType, Severity: rule.Severity,
 		Title: title, Message: message, TenantID: tenantID, BucketID: bucketID, BucketName: bucketName,
 		Details: raw, NotifyTenant: rule.NotifyTenant,
 	})
-	return err == nil, err
+	if err != nil {
+		return false, err
+	}
+	e.dispatch(ctx, ev, rule)
+	return true, nil
 }
 
 func (e *Evaluator) evalTenantQuota(ctx context.Context, rule Rule, usage *project.Usage) (int, int, error) {

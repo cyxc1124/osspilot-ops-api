@@ -324,6 +324,33 @@ func (s *Store) HasOpenEvent(ctx context.Context, ruleID int64, tenantID, bucket
 	return ok, err
 }
 
+func (s *Store) ListEnabledChannels(ctx context.Context, ids []int64) ([]Channel, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	rows, err := s.pool.Query(ctx, `
+		SELECT id, name, channel_type, enabled, config, created_at, updated_at
+		FROM notification_channels WHERE id = ANY($1) AND enabled`, ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Channel
+	for rows.Next() {
+		var c Channel
+		if err := rows.Scan(&c.ID, &c.Name, &c.ChannelType, &c.Enabled, &c.Config, &c.CreatedAt, &c.UpdatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, c)
+	}
+	return out, rows.Err()
+}
+
+func (s *Store) UpdateEventDetails(ctx context.Context, id int64, details json.RawMessage) error {
+	_, err := s.pool.Exec(ctx, `UPDATE alert_events SET details = $2 WHERE id = $1`, id, nzJSON(details, "{}"))
+	return err
+}
+
 func (s *Store) InsertEvent(ctx context.Context, e Event) (*Event, error) {
 	var id int64
 	err := s.pool.QueryRow(ctx, `
@@ -355,4 +382,3 @@ func (s *Store) ResolveOpen(ctx context.Context, ruleID int64, tenantID, bucketI
 	}
 	return int(tag.RowsAffected()), nil
 }
-
