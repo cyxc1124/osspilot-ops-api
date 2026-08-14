@@ -151,14 +151,21 @@ type UsageBucket struct {
 	TrashCount  int64  `json:"trash_object_count"`
 }
 
+type StorageClass struct {
+	StorageClass string `json:"storage_class"`
+	UsedBytes    int64  `json:"used_bytes"`
+}
+
 type Usage struct {
-	UsedBytes    int64         `json:"used_bytes"`
-	ObjectCount  int64         `json:"object_count"`
-	TrashBytes   int64         `json:"trash_bytes"`
-	TrashCount   int64         `json:"trash_object_count"`
-	VersionBytes int64         `json:"version_bytes"`
-	VersionCount int64         `json:"version_object_count"`
-	Buckets      []UsageBucket `json:"buckets"`
+	UsedBytes      int64          `json:"used_bytes"`
+	ObjectCount    int64          `json:"object_count"`
+	TrashBytes     int64          `json:"trash_bytes"`
+	TrashCount     int64          `json:"trash_object_count"`
+	VersionBytes   int64          `json:"version_bytes"`
+	VersionCount   int64          `json:"version_object_count"`
+	Buckets        []UsageBucket  `json:"buckets"`
+	StorageClasses []StorageClass `json:"storage_classes"`
+	CollectedAt    *string        `json:"collected_at"`
 }
 
 type AlertEvent struct {
@@ -207,7 +214,47 @@ func (c *Client) GetUsage(ctx context.Context) (*Usage, error) {
 	if out.Buckets == nil {
 		out.Buckets = []UsageBucket{}
 	}
+	if out.StorageClasses == nil {
+		out.StorageClasses = []StorageClass{}
+	}
 	return &out, nil
+}
+
+type AuditEntry struct {
+	ID           int64   `json:"id"`
+	UserID       *int64  `json:"user_id"`
+	Username     *string `json:"username"`
+	TenantID     *int64  `json:"tenant_id"`
+	TenantName   *string `json:"tenant_name"`
+	BucketName   *string `json:"bucket_name"`
+	ObjectKey    *string `json:"object_key"`
+	Action       string  `json:"action"`
+	SourceIP     *string `json:"source_ip"`
+	UserAgent    *string `json:"user_agent"`
+	Status       string  `json:"status"`
+	ErrorMessage *string `json:"error_message"`
+	CreatedAt    string  `json:"created_at"`
+}
+
+func (c *Client) ListAudit(ctx context.Context, q url.Values) ([]AuditEntry, int, error) {
+	if c == nil {
+		return nil, 0, nil
+	}
+	path := "/internal/stats/audit-logs"
+	if enc := q.Encode(); enc != "" {
+		path += "?" + enc
+	}
+	var out struct {
+		Items []AuditEntry `json:"items"`
+		Total int          `json:"total"`
+	}
+	if err := c.doJSON(ctx, http.MethodGet, path, nil, &out); err != nil {
+		return nil, 0, err
+	}
+	if out.Items == nil {
+		out.Items = []AuditEntry{}
+	}
+	return out.Items, out.Total, nil
 }
 
 type RequestTraffic struct {

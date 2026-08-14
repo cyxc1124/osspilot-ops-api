@@ -4,22 +4,28 @@ import (
 	"encoding/csv"
 	"encoding/json"
 	"io"
+	"log/slog"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/cyxc1124/osspilot-ops-api/internal/accounts"
 	"github.com/cyxc1124/osspilot-ops-api/internal/auth"
 	"github.com/cyxc1124/osspilot-ops-api/internal/httpx"
+	"github.com/cyxc1124/osspilot-ops-api/internal/project"
 )
 
 type Handler struct {
-	store   *Store
-	protect func(auth.UserHandler) http.HandlerFunc
+	store    *Store
+	project  *project.Client
+	accounts *accounts.Store
+	protect  func(auth.UserHandler) http.HandlerFunc
 }
 
-func NewHandler(store *Store, protect func(auth.UserHandler) http.HandlerFunc) *Handler {
-	return &Handler{store: store, protect: protect}
+func NewHandler(store *Store, protect func(auth.UserHandler) http.HandlerFunc, proj *project.Client, accounts *accounts.Store) *Handler {
+	return &Handler{store: store, protect: protect, project: proj, accounts: accounts}
 }
 
 func (h *Handler) Register(mux *http.ServeMux) {
@@ -43,11 +49,14 @@ func (h *Handler) list(w http.ResponseWriter, r *http.Request, _ *auth.User) {
 	if !ok {
 		return
 	}
-	items, total, err := h.store.List(r.Context(), f, page, pageSize)
+	need := page * pageSize
+	items, total, err := h.store.List(r.Context(), f, 1, need)
 	if err != nil {
 		httpx.Error(w, http.StatusInternalServerError, "database error")
 		return
 	}
+	tenant, tenantTotal := h.tenantAudit(r, f, 1, need)
+	items, total = mergePage(items, tenantEntries(tenant), total, tenantTotal, page, pageSize)
 	out := make([]map[string]any, 0, len(items))
 	for _, e := range items {
 		out = append(out, entryJSON(e))
@@ -68,6 +77,8 @@ func (h *Handler) export(w http.ResponseWriter, r *http.Request, _ *auth.User) {
 		httpx.Error(w, http.StatusInternalServerError, "database error")
 		return
 	}
+	tenant, tenantTotal := h.tenantAudit(r, f, 1, 10000)
+	items, _ = mergePage(items, tenantEntries(tenant), len(items), tenantTotal, 1, 10000)
 	w.Header().Set("Content-Type", "text/csv; charset=utf-8")
 	w.Header().Set("Content-Disposition", `attachment; filename="audit-logs.csv"`)
 	_ = writeCSV(w, items)
@@ -125,6 +136,64 @@ func parseFilter(w http.ResponseWriter, r *http.Request) (Filter, int, int, bool
 		pageSize = n
 	}
 	return f, page, pageSize, true
+}
+
+func (h *Handler) tenantAudit(r *http.Request, f Filter, page, pageSize int) ([]project.AuditEntry, int) {
+	if h.project == nil {
+		return nil, 0
+	}
+	q := url.Values{}
+	q.Set("page", strconv.Itoa(page))
+	q.Set("page_size", strconv.Itoa(pageSize))
+	if f.Username != "" {
+		q.Set("username", f.Username)
+	}
+	if f.TenantName != "" {
+		q.Set("tenant_name", f.TenantName)
+	}
+	if f.BucketName != "" {
+		q.Set("bucket_name", f.BucketName)
+	}
+	if f.ObjectKey != "" {
+		q.Set("object_key", f.ObjectKey)
+	}
+	if f.Action != "" {
+		q.Set("action", f.Action)
+	}
+	if f.Status != "" {
+		q.Set("status", f.Status)
+	}
+	if f.SourceIP != "" {
+		q.Set("source_ip", f.SourceIP)
+	}
+	if f.Keyword != "" {
+		q.Set("keyword", f.Keyword)
+	}
+	if f.AdminOnly {
+		q.Set("admin_only", "true")
+	}
+	if f.From != nil {
+		q.Set("created_from", f.From.UTC().Format(time.RFC3339))
+	}
+	if f.To != nil {
+		q.Set("created_to", f.To.UTC().Format(time.RFC3339))
+	}
+	if f.TenantID != nil {
+		if h.accounts == nil {
+			return nil, 0
+		}
+		acct, err := h.accounts.GetByID(r.Context(), *f.TenantID)
+		if err != nil || acct == nil {
+			return nil, 0
+		}
+		q.Set("account_name", acct.Username)
+	}
+	items, total, err := h.project.ListAudit(r.Context(), q)
+	if err != nil {
+		slog.Warn("tenant audit", "err", err)
+		return nil, 0
+	}
+	return items, total
 }
 
 func optInt64(w http.ResponseWriter, raw, name string) (*int64, bool) {

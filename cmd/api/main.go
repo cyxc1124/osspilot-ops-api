@@ -166,7 +166,7 @@ func main() {
 	grantsH := grants.NewHandler(grantStore, accountStore, bucketStore, proj, authH.RequireAdmin)
 	lifeH := lifecycle.NewHandler(lifeStore, bucketStore, authH.RequireAdmin)
 	cephH := ceph.NewHandler(settingsH, authH.RequireUser, authH.RequireAdmin)
-	auditH := audit.NewHandler(auditStore, authH.RequireUser)
+	auditH := audit.NewHandler(auditStore, authH.RequireUser, proj, accountStore)
 	statsH := stats.NewHandler(statsStore, grantStore, settingsH, proj, authH.RequireUser)
 	alertH := alerts.NewHandler(alertStore, statsStore, bucketStore, grantStore, proj, settingsH, authH.RequireUser, authH.RequireAdmin)
 	accessH := access.NewHandler(accountStore, proj, auditStore, authH.RequireAdmin)

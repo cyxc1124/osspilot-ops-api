@@ -134,8 +134,18 @@ func (h *Handler) tenants(w http.ResponseWriter, r *http.Request, _ *auth.User) 
 	httpx.JSON(w, http.StatusOK, map[string]any{"items": items})
 }
 
-func (h *Handler) storageClasses(w http.ResponseWriter, _ *http.Request, _ *auth.User) {
-	httpx.JSON(w, http.StatusOK, map[string]any{"items": []any{}, "collected_at": collected()})
+func (h *Handler) storageClasses(w http.ResponseWriter, r *http.Request, _ *auth.User) {
+	items := make([]map[string]any, 0)
+	collectedAt := collected()
+	if u := h.tenantUsage(r.Context()); u != nil {
+		for _, c := range u.StorageClasses {
+			items = append(items, map[string]any{"storage_class": c.StorageClass, "used_bytes": c.UsedBytes})
+		}
+		if u.CollectedAt != nil && *u.CollectedAt != "" {
+			collectedAt = *u.CollectedAt
+		}
+	}
+	httpx.JSON(w, http.StatusOK, map[string]any{"items": items, "collected_at": collectedAt})
 }
 
 func (h *Handler) traffic(w http.ResponseWriter, r *http.Request, _ *auth.User) {
