@@ -6,20 +6,25 @@ import (
 	"fmt"
 	"math"
 	"net/http"
+	"strconv"
+	"time"
 
 	"github.com/cyxc1124/osspilot-ops-api/internal/buckets"
+	"github.com/cyxc1124/osspilot-ops-api/internal/ceph"
 	"github.com/cyxc1124/osspilot-ops-api/internal/grants"
 	"github.com/cyxc1124/osspilot-ops-api/internal/project"
+	"github.com/cyxc1124/osspilot-ops-api/internal/settings"
 	"github.com/cyxc1124/osspilot-ops-api/internal/stats"
 )
 
 type Evaluator struct {
-	store   *Store
-	stats   *stats.Store
-	buckets *buckets.Store
-	grants  *grants.Store
-	project *project.Client
-	http    *http.Client
+	store    *Store
+	stats    *stats.Store
+	buckets  *buckets.Store
+	grants   *grants.Store
+	project  *project.Client
+	settings *settings.Handler
+	http     *http.Client
 }
 
 func (e *Evaluator) Run(ctx context.Context) (evaluated, created, resolved int, err error) {
@@ -39,8 +44,21 @@ func (e *Evaluator) Run(ctx context.Context) (evaluated, created, resolved int, 
 			n, r, err = e.evalTenantQuota(ctx, rule, usage)
 		case "bucket_capacity_80", "bucket_capacity_90":
 			n, r, err = e.evalBucketCapacity(ctx, rule, usage)
+		case "rgw_5xx_rate":
+			n, r, err = e.evalRGW5xx(ctx, rule)
+		case "upload_failure_rate":
+			n, r, err = e.evalAuditRate(ctx, rule, []string{"upload", "upload_object", "complete_multipart_upload"}, true)
+		case "download_failure_rate":
+			n, r, err = e.evalAuditRate(ctx, rule, []string{"download", "download_object", "presign_download"}, true)
+		case "frequent_delete":
+			n, r, err = e.evalAuditRate(ctx, rule, []string{"delete", "delete_object", "batch_delete"}, false)
+		case "frequent_download":
+			n, r, err = e.evalAuditRate(ctx, rule, []string{"download", "download_object", "presign_download", "batch_download"}, false)
+		case "edit_save_failure":
+			n, r, err = e.evalAuditRate(ctx, rule, []string{"save_text_edit", "save_office_edit"}, true)
+		case "audit_write_failure":
+			n, r, err = e.evalAuditRate(ctx, rule, []string{"audit_log"}, true)
 		default:
-			// ponytail: audit/RGW series rules stay no-op until those series are wired.
 			continue
 		}
 		if err != nil {
@@ -99,7 +117,55 @@ func (e *Evaluator) fire(ctx context.Context, rule Rule, title, message string, 
 		return false, err
 	}
 	e.dispatch(ctx, ev, rule)
+	e.projectEvent(ctx, rule, tenantID, bucketID, bucketName, ev, false)
 	return true, nil
+}
+
+func fingerprint(ruleID int64, tenantID, bucketID *int64) string {
+	t, b := "0", "0"
+	if tenantID != nil {
+		t = strconv.FormatInt(*tenantID, 10)
+	}
+	if bucketID != nil {
+		b = strconv.FormatInt(*bucketID, 10)
+	}
+	return fmt.Sprintf("r%d-t%s-b%s", ruleID, t, b)
+}
+
+func (e *Evaluator) projectEvent(ctx context.Context, rule Rule, tenantID, bucketID *int64, bucketName *string, ev *Event, resolved bool) {
+	if e.project == nil || !rule.NotifyTenant || tenantID == nil || e.stats == nil {
+		return
+	}
+	name, err := e.stats.Username(ctx, *tenantID)
+	if err != nil || name == "" {
+		return
+	}
+	body := project.AlertEvent{
+		Username: name, Fingerprint: fingerprint(rule.ID, tenantID, bucketID),
+		RuleType: rule.RuleType, Severity: rule.Severity, Status: "firing",
+		Title: rule.Name, Message: "", BucketName: bucketName,
+	}
+	if ev != nil {
+		body.Title, body.Message, body.Severity = ev.Title, ev.Message, ev.Severity
+		if !ev.FiredAt.IsZero() {
+			body.FiredAt = ev.FiredAt.UTC().Format(time.RFC3339)
+		}
+	}
+	if resolved {
+		body.Resolved, body.Status = true, "resolved"
+	}
+	_ = e.project.PutAlert(ctx, body)
+}
+
+func (e *Evaluator) resolveAndProject(ctx context.Context, rule Rule, tenantID, bucketID *int64) (int, error) {
+	n, err := e.store.ResolveOpen(ctx, rule.ID, tenantID, bucketID)
+	if err != nil {
+		return n, err
+	}
+	if n > 0 {
+		e.projectEvent(ctx, rule, tenantID, bucketID, nil, nil, true)
+	}
+	return n, nil
 }
 
 func (e *Evaluator) evalTenantQuota(ctx context.Context, rule Rule, usage *project.Usage) (int, int, error) {
@@ -153,7 +219,7 @@ func (e *Evaluator) evalTenantQuota(ctx context.Context, rule Rule, usage *proje
 				newN++
 			}
 		} else {
-			n, err := e.store.ResolveOpen(ctx, rule.ID, &tid, nil)
+			n, err := e.resolveAndProject(ctx, rule, &tid, nil)
 			if err != nil {
 				return newN, resN, err
 			}
@@ -217,4 +283,106 @@ func (e *Evaluator) evalBucketCapacity(ctx context.Context, rule Rule, usage *pr
 		}
 	}
 	return newN, resN, nil
+}
+
+func (e *Evaluator) evalRGW5xx(ctx context.Context, rule Rule) (int, int, error) {
+	th := configFloat(rule.Config, "error_rate", 0.05)
+	if e.settings == nil {
+		n, err := e.store.ResolveOpen(ctx, rule.ID, nil, nil)
+		return 0, n, err
+	}
+	rt, err := e.settings.Runtime(ctx)
+	if err != nil || rt.CephMgmtAPIURL == "" {
+		n, err := e.store.ResolveOpen(ctx, rule.ID, nil, nil)
+		return 0, n, err
+	}
+	payload, err := ceph.Fetch(ctx, rt.CephMgmtAPIURL, "/rgw/stats")
+	if err != nil {
+		n, err2 := e.store.ResolveOpen(ctx, rule.ID, nil, nil)
+		return 0, n, err2
+	}
+	_, er, _, _ := ceph.ParseStats(payload)
+	if er != nil && *er+1e-12 >= th {
+		msg := fmt.Sprintf("RGW 5xx 错误率 %.2f%%，阈值 %.2f%%", *er*100, th*100)
+		created, err := e.fire(ctx, rule, rule.Name, msg, nil, nil, nil, map[string]any{"error_rate": *er})
+		if err != nil {
+			return 0, 0, err
+		}
+		if created {
+			return 1, 0, nil
+		}
+		return 0, 0, nil
+	}
+	n, err := e.store.ResolveOpen(ctx, rule.ID, nil, nil)
+	return 0, n, err
+}
+
+func (e *Evaluator) evalAuditRate(ctx context.Context, rule Rule, actions []string, failureOnly bool) (int, int, error) {
+	window := int(configFloat(rule.Config, "window_minutes", 60))
+	if window < 1 {
+		window = 60
+	}
+	if e.project == nil {
+		return 0, 0, nil
+	}
+	win, err := e.project.AuditWindow(ctx, window, actions)
+	if err != nil {
+		return 0, 0, nil
+	}
+	if failureOnly {
+		rate := 0.0
+		if win.Total > 0 {
+			rate = float64(win.Failures) / float64(win.Total)
+		}
+		th := configFloat(rule.Config, "failure_rate", 0.1)
+		if win.Total > 0 && rate+1e-12 >= th {
+			msg := fmt.Sprintf("近 %d 分钟 %v 失败率 %.1f%%（%d/%d）", window, actions, rate*100, win.Failures, win.Total)
+			created, err := e.fire(ctx, rule, rule.Name, msg, nil, nil, nil, map[string]any{
+				"failure_rate": rate, "total": win.Total, "failures": win.Failures,
+			})
+			if err != nil {
+				return 0, 0, err
+			}
+			if created {
+				return 1, 0, nil
+			}
+			return 0, 0, nil
+		}
+	} else {
+		th := int64(configFloat(rule.Config, "count_threshold", 50))
+		if win.Total >= th {
+			msg := fmt.Sprintf("近 %d 分钟 %v 操作 %d 次，超过阈值 %d", window, actions, win.Total, th)
+			created, err := e.fire(ctx, rule, rule.Name, msg, nil, nil, nil, map[string]any{
+				"count": win.Total, "window_minutes": window,
+			})
+			if err != nil {
+				return 0, 0, err
+			}
+			if created {
+				return 1, 0, nil
+			}
+			return 0, 0, nil
+		}
+	}
+	n, err := e.store.ResolveOpen(ctx, rule.ID, nil, nil)
+	return 0, n, err
+}
+
+func configFloat(cfg json.RawMessage, key string, def float64) float64 {
+	var m map[string]any
+	if err := json.Unmarshal(nzJSON(cfg, "{}"), &m); err != nil {
+		return def
+	}
+	v, ok := m[key]
+	if !ok {
+		return def
+	}
+	switch t := v.(type) {
+	case float64:
+		return t
+	case json.Number:
+		f, _ := t.Float64()
+		return f
+	}
+	return def
 }

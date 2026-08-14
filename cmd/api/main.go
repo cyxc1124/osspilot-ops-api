@@ -168,7 +168,7 @@ func main() {
 	cephH := ceph.NewHandler(settingsH, authH.RequireUser, authH.RequireAdmin)
 	auditH := audit.NewHandler(auditStore, authH.RequireUser)
 	statsH := stats.NewHandler(statsStore, grantStore, settingsH, proj, authH.RequireUser)
-	alertH := alerts.NewHandler(alertStore, statsStore, bucketStore, grantStore, proj, authH.RequireUser, authH.RequireAdmin)
+	alertH := alerts.NewHandler(alertStore, statsStore, bucketStore, grantStore, proj, settingsH, authH.RequireUser, authH.RequireAdmin)
 	accessH := access.NewHandler(accountStore, proj, auditStore, authH.RequireAdmin)
 	rbacH := tenantrbac.NewHandler(accountStore, proj, authH.RequireAdmin)
 	locksH := filelocks.NewHandler(proj, auditStore, authH.RequireAdmin)

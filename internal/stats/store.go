@@ -63,4 +63,16 @@ func (s *Store) Tenants(ctx context.Context, limit int) ([]TenantRow, error) {
 	return out, rows.Err()
 }
 
+func (s *Store) Username(ctx context.Context, id int64) (string, error) {
+	if s == nil || s.pool == nil {
+		return "", nil
+	}
+	var name string
+	err := s.pool.QueryRow(ctx, `SELECT username FROM tenant_accounts WHERE id = $1`, id).Scan(&name)
+	if err != nil {
+		return "", nil
+	}
+	return name, nil
+}
+
 func collected() string { return time.Now().UTC().Format(time.RFC3339) }

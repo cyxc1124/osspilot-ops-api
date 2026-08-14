@@ -161,6 +161,41 @@ type Usage struct {
 	Buckets      []UsageBucket `json:"buckets"`
 }
 
+type AlertEvent struct {
+	Username    string  `json:"username"`
+	Fingerprint string  `json:"fingerprint"`
+	RuleType    string  `json:"rule_type"`
+	Severity    string  `json:"severity"`
+	Status      string  `json:"status"`
+	Title       string  `json:"title"`
+	Message     string  `json:"message"`
+	BucketName  *string `json:"bucket_name,omitempty"`
+	FiredAt     string  `json:"fired_at,omitempty"`
+	Resolved    bool    `json:"resolved,omitempty"`
+}
+
+func (c *Client) PutAlert(ctx context.Context, ev AlertEvent) error {
+	if c == nil {
+		return nil
+	}
+	return c.do(ctx, http.MethodPut, "/internal/alerts/events", ev)
+}
+
+type AuditWindow struct {
+	Total    int64 `json:"total"`
+	Failures int64 `json:"failures"`
+}
+
+func (c *Client) AuditWindow(ctx context.Context, minutes int, actions []string) (AuditWindow, error) {
+	var out AuditWindow
+	if c == nil {
+		return out, nil
+	}
+	q := "/internal/stats/audit-window?minutes=" + strconv.Itoa(minutes) + "&actions=" + url.QueryEscape(strings.Join(actions, ","))
+	err := c.doJSON(ctx, http.MethodGet, q, nil, &out)
+	return out, err
+}
+
 func (c *Client) GetUsage(ctx context.Context) (*Usage, error) {
 	if c == nil {
 		return nil, &HTTPError{Status: http.StatusServiceUnavailable, Detail: "tenant projection is not configured"}

@@ -12,6 +12,7 @@ import (
 	"github.com/cyxc1124/osspilot-ops-api/internal/grants"
 	"github.com/cyxc1124/osspilot-ops-api/internal/httpx"
 	"github.com/cyxc1124/osspilot-ops-api/internal/project"
+	"github.com/cyxc1124/osspilot-ops-api/internal/settings"
 	"github.com/cyxc1124/osspilot-ops-api/internal/stats"
 )
 
@@ -22,10 +23,10 @@ type Handler struct {
 	write func(auth.UserHandler) http.HandlerFunc
 }
 
-func NewHandler(store *Store, statsStore *stats.Store, bucketStore *buckets.Store, grantStore *grants.Store, proj *project.Client, read, write func(auth.UserHandler) http.HandlerFunc) *Handler {
+func NewHandler(store *Store, statsStore *stats.Store, bucketStore *buckets.Store, grantStore *grants.Store, proj *project.Client, settingsH *settings.Handler, read, write func(auth.UserHandler) http.HandlerFunc) *Handler {
 	return &Handler{
 		store: store,
-		eval:  &Evaluator{store: store, stats: statsStore, buckets: bucketStore, grants: grantStore, project: proj},
+		eval:  &Evaluator{store: store, stats: statsStore, buckets: bucketStore, grants: grantStore, project: proj, settings: settingsH},
 		read:  read,
 		write: write,
 	}

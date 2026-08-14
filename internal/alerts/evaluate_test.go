@@ -16,6 +16,29 @@ func TestUsagePercent(t *testing.T) {
 	}
 }
 
+func TestConfigFloat(t *testing.T) {
+	raw := json.RawMessage(`{"error_rate":0.05,"window_minutes":30,"count_threshold":50}`)
+	if got := configFloat(raw, "error_rate", 1); got != 0.05 {
+		t.Fatalf("error_rate %v", got)
+	}
+	if got := configFloat(raw, "window_minutes", 60); got != 30 {
+		t.Fatalf("window %v", got)
+	}
+	if got := configFloat(nil, "failure_rate", 0.1); got != 0.1 {
+		t.Fatalf("default %v", got)
+	}
+}
+
+func TestFingerprint(t *testing.T) {
+	tid, bid := int64(3), int64(9)
+	if got := fingerprint(1, &tid, &bid); got != "r1-t3-b9" {
+		t.Fatal(got)
+	}
+	if got := fingerprint(2, nil, nil); got != "r2-t0-b0" {
+		t.Fatal(got)
+	}
+}
+
 func TestThresholdPercent(t *testing.T) {
 	raw := json.RawMessage(`{"threshold_percent":0.9}`)
 	if got := thresholdPercent(raw, 0.8); got != 0.9 {
