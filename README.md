@@ -10,6 +10,8 @@ go run ./cmd/migrate up
 go test ./...
 go run ./cmd/api
 go run ./cmd/worker   # 生命周期清理（读规则 + 设置里的 RGW；可用 LIFECYCLE_INTERVAL）
+go run ./cmd/reset-password -l
+go run ./cmd/reset-password -u admin -p 'new-password'   # 或 OPS_RESET_PASSWORD / 管道 stdin
 ```
 
 - `GET /healthz`
@@ -44,4 +46,4 @@ AGPL-3.0-only
 
 ## 镜像
 
-`Dockerfile` 产出同一镜像：`command` 为 `api`（默认）、`migrate`、`worker`。入口不自动 migrate。
+`Dockerfile` 产出同一镜像：`command` 为 `api`（默认）、`migrate`、`worker`、`reset-password`。入口不自动 migrate。忘记运营密码时：`reset-password -u admin`（`--password` / `OPS_RESET_PASSWORD` / 非 TTY 的 stdin）。

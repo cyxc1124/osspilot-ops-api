@@ -80,6 +80,17 @@ func (s *Store) List(ctx context.Context) ([]Record, error) {
 	return out, nil
 }
 
+func (s *Store) GetByUsername(ctx context.Context, username string) (*Record, error) {
+	u, err := scan(s.pool.QueryRow(ctx, `SELECT `+cols+` FROM ops_users WHERE username = $1`, username))
+	if err == pgx.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("get user: %w", err)
+	}
+	return &u, nil
+}
+
 func (s *Store) GetByID(ctx context.Context, id int64) (*Record, error) {
 	u, err := scan(s.pool.QueryRow(ctx, `SELECT `+cols+` FROM ops_users WHERE id = $1`, id))
 	if err == pgx.ErrNoRows {
