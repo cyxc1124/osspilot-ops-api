@@ -18,6 +18,18 @@ func NewStore(pool *pgxpool.Pool) *Store {
 	return &Store{pool: pool}
 }
 
+type Fallbacks struct {
+	S3Endpoint        string
+	RGWAccessKey      string
+	RGWSecretKey      string
+	DownloadCDNURL    string
+	PreviewCDNURL     string
+	ObjectHTTPDomain  string
+	ObjectHTTPSDomain string
+	OfficeURL         string
+	CephMgmtAPIURL    string
+}
+
 type row struct {
 	Value     string
 	UpdatedAt time.Time

@@ -26,18 +26,6 @@ const (
 	defaultMultipartStale        = 7
 )
 
-type Fallbacks struct {
-	S3Endpoint        string
-	RGWAccessKey      string
-	RGWSecretKey      string
-	DownloadCDNURL    string
-	PreviewCDNURL     string
-	ObjectHTTPDomain  string
-	ObjectHTTPSDomain string
-	OfficeURL         string
-	CephMgmtAPIURL    string
-}
-
 type Handler struct {
 	store     *Store
 	regions   *regions.Store
