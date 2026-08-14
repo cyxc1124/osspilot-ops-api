@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -155,6 +156,116 @@ func (c *Client) GetUsage(ctx context.Context) (*Usage, error) {
 	}
 	if out.Buckets == nil {
 		out.Buckets = []UsageBucket{}
+	}
+	return &out, nil
+}
+
+type RequestTraffic struct {
+	Period        string  `json:"period"`
+	UploadBytes   int64   `json:"upload_bytes"`
+	DownloadBytes int64   `json:"download_bytes"`
+	RequestCount  int64   `json:"request_count"`
+	GetCount      int64   `json:"get_count"`
+	PutCount      int64   `json:"put_count"`
+	DeleteCount   int64   `json:"delete_count"`
+	ErrorCount    int64   `json:"error_count"`
+	ActiveUsers   int64   `json:"active_users"`
+	CollectedAt   *string `json:"collected_at"`
+}
+
+type DailyTrafficItem struct {
+	StatDate      string `json:"stat_date"`
+	UploadBytes   int64  `json:"upload_bytes"`
+	DownloadBytes int64  `json:"download_bytes"`
+	RequestCount  int64  `json:"request_count"`
+	GetCount      int64  `json:"get_count"`
+	PutCount      int64  `json:"put_count"`
+	DeleteCount   int64  `json:"delete_count"`
+	ErrorCount    int64  `json:"error_count"`
+}
+
+type UserBehaviorItem struct {
+	UserID        int64   `json:"user_id"`
+	TenantID      int64   `json:"tenant_id"`
+	Username      *string `json:"username"`
+	UploadCount   int64   `json:"upload_count"`
+	DownloadCount int64   `json:"download_count"`
+	DeleteCount   int64   `json:"delete_count"`
+	AccessCount   int64   `json:"access_count"`
+	UploadBytes   int64   `json:"upload_bytes"`
+	DownloadBytes int64   `json:"download_bytes"`
+}
+
+type BucketRankItem struct {
+	BucketID      int64  `json:"bucket_id"`
+	TenantID      *int64 `json:"tenant_id"`
+	BucketName    string `json:"bucket_name"`
+	RequestCount  int64  `json:"request_count"`
+	UploadBytes   int64  `json:"upload_bytes"`
+	DownloadBytes int64  `json:"download_bytes"`
+	GetCount      int64  `json:"get_count"`
+	PutCount      int64  `json:"put_count"`
+	DeleteCount   int64  `json:"delete_count"`
+}
+
+type PrefixRankItem struct {
+	BucketID    int64  `json:"bucket_id"`
+	TenantID    *int64 `json:"tenant_id"`
+	BucketName  string `json:"bucket_name"`
+	Prefix      string `json:"prefix"`
+	AccessCount int64  `json:"access_count"`
+}
+
+type RankBlock[T any] struct {
+	Items       []T     `json:"items"`
+	CollectedAt *string `json:"collected_at"`
+}
+
+type Requests struct {
+	Period   string                      `json:"period"`
+	Platform RequestTraffic              `json:"platform"`
+	Daily    RankBlock[DailyTrafficItem] `json:"daily"`
+	Users    RankBlock[UserBehaviorItem] `json:"users"`
+	Buckets  RankBlock[BucketRankItem]   `json:"buckets"`
+	Prefixes RankBlock[PrefixRankItem]   `json:"prefixes"`
+}
+
+func (c *Client) GetRequests(ctx context.Context, period string, days, limit int, sortBy string) (*Requests, error) {
+	if c == nil {
+		return nil, &HTTPError{Status: http.StatusServiceUnavailable, Detail: "tenant projection is not configured"}
+	}
+	q := url.Values{}
+	if period != "" {
+		q.Set("period", period)
+	}
+	if days > 0 {
+		q.Set("days", strconv.Itoa(days))
+	}
+	if limit > 0 {
+		q.Set("limit", strconv.Itoa(limit))
+	}
+	if sortBy != "" {
+		q.Set("sort_by", sortBy)
+	}
+	path := "/internal/stats/requests"
+	if enc := q.Encode(); enc != "" {
+		path += "?" + enc
+	}
+	var out Requests
+	if err := c.doJSON(ctx, http.MethodGet, path, nil, &out); err != nil {
+		return nil, err
+	}
+	if out.Daily.Items == nil {
+		out.Daily.Items = []DailyTrafficItem{}
+	}
+	if out.Users.Items == nil {
+		out.Users.Items = []UserBehaviorItem{}
+	}
+	if out.Buckets.Items == nil {
+		out.Buckets.Items = []BucketRankItem{}
+	}
+	if out.Prefixes.Items == nil {
+		out.Prefixes.Items = []PrefixRankItem{}
 	}
 	return &out, nil
 }

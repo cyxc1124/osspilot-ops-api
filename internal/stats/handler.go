@@ -36,6 +36,17 @@ func (h *Handler) tenantUsage(ctx context.Context) *project.Usage {
 	return u
 }
 
+func (h *Handler) tenantRequests(ctx context.Context, period string, days, limit int, sortBy string) *project.Requests {
+	if h.project == nil {
+		return nil
+	}
+	r, err := h.project.GetRequests(ctx, period, days, limit, sortBy)
+	if err != nil {
+		return nil
+	}
+	return r
+}
+
 func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/stats/overview", h.protect(h.overview))
 	mux.HandleFunc("GET /api/stats/tenants/ranking", h.protect(h.tenants))
@@ -133,6 +144,16 @@ func (h *Handler) traffic(w http.ResponseWriter, r *http.Request, _ *auth.User) 
 		httpx.Error(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	if reqs := h.tenantRequests(r.Context(), period, 0, 0, ""); reqs != nil {
+		p := reqs.Platform
+		httpx.JSON(w, http.StatusOK, map[string]any{
+			"period": period, "upload_bytes": p.UploadBytes, "download_bytes": p.DownloadBytes,
+			"request_count": p.RequestCount, "get_count": p.GetCount, "put_count": p.PutCount,
+			"delete_count": p.DeleteCount, "error_count": p.ErrorCount, "active_users": p.ActiveUsers,
+			"collected_at": p.CollectedAt,
+		})
+		return
+	}
 	httpx.JSON(w, http.StatusOK, zeroTraffic(period))
 }
 
@@ -146,14 +167,22 @@ func (h *Handler) daily(w http.ResponseWriter, r *http.Request, _ *auth.User) {
 		}
 		days = n
 	}
-	_ = days
-	httpx.JSON(w, http.StatusOK, map[string]any{"items": []any{}, "collected_at": collected()})
+	if reqs := h.tenantRequests(r.Context(), "30d", days, 0, ""); reqs != nil {
+		httpx.JSON(w, http.StatusOK, map[string]any{"items": reqs.Daily.Items, "collected_at": reqs.Daily.CollectedAt})
+		return
+	}
+	httpx.JSON(w, http.StatusOK, map[string]any{"items": []any{}, "collected_at": nil})
 }
 
 func (h *Handler) performance(w http.ResponseWriter, r *http.Request, _ *auth.User) {
-	if _, err := parsePeriod(r.URL.Query().Get("period")); err != nil {
+	period, err := parsePeriod(r.URL.Query().Get("period"))
+	if err != nil {
 		httpx.Error(w, http.StatusBadRequest, err.Error())
 		return
+	}
+	auditErr, auditReq := int64(0), int64(0)
+	if reqs := h.tenantRequests(r.Context(), period, 0, 0, ""); reqs != nil {
+		auditErr, auditReq = reqs.Platform.ErrorCount, reqs.Platform.RequestCount
 	}
 	url := ""
 	if h.settings != nil {
@@ -170,7 +199,7 @@ func (h *Handler) performance(w http.ResponseWriter, r *http.Request, _ *auth.Us
 		httpx.JSON(w, http.StatusOK, map[string]any{
 			"available": false, "error": err.Error(), "request_count": nil, "error_rate": nil,
 			"p95_latency_ms": nil, "p99_latency_ms": nil, "running_instances": 0, "total_instances": 0,
-			"audit_error_count": 0, "audit_request_count": 0, "fetched_at": collected(),
+			"audit_error_count": auditErr, "audit_request_count": auditReq, "fetched_at": collected(),
 		})
 		return
 	}
@@ -187,7 +216,7 @@ func (h *Handler) performance(w http.ResponseWriter, r *http.Request, _ *auth.Us
 	httpx.JSON(w, http.StatusOK, map[string]any{
 		"available": true, "error": nil, "request_count": n, "error_rate": er,
 		"p95_latency_ms": p95, "p99_latency_ms": p99, "running_instances": running, "total_instances": total,
-		"audit_error_count": 0, "audit_request_count": 0, "fetched_at": collected(),
+		"audit_error_count": auditErr, "audit_request_count": auditReq, "fetched_at": collected(),
 	})
 }
 
@@ -197,7 +226,21 @@ func (h *Handler) behavior(w http.ResponseWriter, r *http.Request, _ *auth.User)
 		httpx.Error(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	httpx.JSON(w, http.StatusOK, map[string]any{"period": period, "items": []any{}, "collected_at": collected()})
+	limit := 20
+	if raw := r.URL.Query().Get("limit"); raw != "" {
+		n, err := strconv.Atoi(raw)
+		if err != nil || n < 1 || n > 100 {
+			httpx.Error(w, http.StatusBadRequest, "limit must be 1-100")
+			return
+		}
+		limit = n
+	}
+	sortBy := r.URL.Query().Get("sort_by")
+	if reqs := h.tenantRequests(r.Context(), period, 0, limit, sortBy); reqs != nil {
+		httpx.JSON(w, http.StatusOK, map[string]any{"period": period, "items": reqs.Users.Items, "collected_at": reqs.Users.CollectedAt})
+		return
+	}
+	httpx.JSON(w, http.StatusOK, map[string]any{"period": period, "items": []any{}, "collected_at": nil})
 }
 
 func (h *Handler) buckets(w http.ResponseWriter, r *http.Request, _ *auth.User) {
@@ -206,16 +249,20 @@ func (h *Handler) buckets(w http.ResponseWriter, r *http.Request, _ *auth.User) 
 		httpx.Error(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	items := []map[string]any{}
-	if u := h.tenantUsage(r.Context()); u != nil {
-		for _, b := range u.Buckets {
-			items = append(items, map[string]any{
-				"bucket_name": b.BucketName, "used_bytes": b.UsedBytes, "object_count": b.ObjectCount,
-				"trash_bytes": b.TrashBytes,
-			})
+	limit := 20
+	if raw := r.URL.Query().Get("limit"); raw != "" {
+		n, err := strconv.Atoi(raw)
+		if err != nil || n < 1 || n > 100 {
+			httpx.Error(w, http.StatusBadRequest, "limit must be 1-100")
+			return
 		}
+		limit = n
 	}
-	httpx.JSON(w, http.StatusOK, map[string]any{"period": period, "items": items, "collected_at": collected()})
+	if reqs := h.tenantRequests(r.Context(), period, 0, limit, ""); reqs != nil {
+		httpx.JSON(w, http.StatusOK, map[string]any{"period": period, "items": reqs.Buckets.Items, "collected_at": reqs.Buckets.CollectedAt})
+		return
+	}
+	httpx.JSON(w, http.StatusOK, map[string]any{"period": period, "items": []any{}, "collected_at": nil})
 }
 
 func (h *Handler) prefixes(w http.ResponseWriter, r *http.Request, _ *auth.User) {
@@ -224,7 +271,20 @@ func (h *Handler) prefixes(w http.ResponseWriter, r *http.Request, _ *auth.User)
 		httpx.Error(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	httpx.JSON(w, http.StatusOK, map[string]any{"period": period, "items": []any{}, "collected_at": collected()})
+	limit := 20
+	if raw := r.URL.Query().Get("limit"); raw != "" {
+		n, err := strconv.Atoi(raw)
+		if err != nil || n < 1 || n > 100 {
+			httpx.Error(w, http.StatusBadRequest, "limit must be 1-100")
+			return
+		}
+		limit = n
+	}
+	if reqs := h.tenantRequests(r.Context(), period, 0, limit, ""); reqs != nil {
+		httpx.JSON(w, http.StatusOK, map[string]any{"period": period, "items": reqs.Prefixes.Items, "collected_at": reqs.Prefixes.CollectedAt})
+		return
+	}
+	httpx.JSON(w, http.StatusOK, map[string]any{"period": period, "items": []any{}, "collected_at": nil})
 }
 
 func zeroTraffic(period string) map[string]any {
