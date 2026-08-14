@@ -106,9 +106,7 @@ func (h *Handler) list(w http.ResponseWriter, r *http.Request, _ *auth.User) {
 	for _, b := range items {
 		it := toItem(b)
 		if u, ok := usage[b.BucketName]; ok {
-			it.UsedBytes = u.UsedBytes
-			it.ObjectCount = u.ObjectCount
-			it.CollectedAt = &now
+			attachUsage(&it, u, now)
 		}
 		out = append(out, it)
 	}
@@ -218,6 +216,16 @@ func emptyToNil(s *string) *string {
 		return nil
 	}
 	return &t
+}
+
+func attachUsage(it *item, u project.UsageBucket, now string) {
+	it.UsedBytes = u.UsedBytes
+	it.ObjectCount = u.ObjectCount
+	if u.CollectedAt != nil && *u.CollectedAt != "" {
+		it.CollectedAt = u.CollectedAt
+		return
+	}
+	it.CollectedAt = &now
 }
 
 func toItem(b Bucket) item {

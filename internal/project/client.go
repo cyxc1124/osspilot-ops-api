@@ -144,11 +144,12 @@ func (c *Client) PutSettings(ctx context.Context, settings map[string]string) er
 }
 
 type UsageBucket struct {
-	BucketName  string `json:"bucket_name"`
-	UsedBytes   int64  `json:"used_bytes"`
-	ObjectCount int64  `json:"object_count"`
-	TrashBytes  int64  `json:"trash_bytes"`
-	TrashCount  int64  `json:"trash_object_count"`
+	BucketName  string  `json:"bucket_name"`
+	UsedBytes   int64   `json:"used_bytes"`
+	ObjectCount int64   `json:"object_count"`
+	TrashBytes  int64   `json:"trash_bytes"`
+	TrashCount  int64   `json:"trash_object_count"`
+	CollectedAt *string `json:"collected_at"`
 }
 
 type StorageClass struct {
