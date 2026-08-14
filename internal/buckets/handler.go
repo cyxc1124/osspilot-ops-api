@@ -93,9 +93,24 @@ func (h *Handler) list(w http.ResponseWriter, r *http.Request, _ *auth.User) {
 		httpx.Error(w, http.StatusInternalServerError, "database error")
 		return
 	}
+	usage := map[string]project.UsageBucket{}
+	if h.project != nil {
+		if u, err := h.project.GetUsage(r.Context()); err == nil {
+			for _, b := range u.Buckets {
+				usage[b.BucketName] = b
+			}
+		}
+	}
+	now := time.Now().UTC().Format(time.RFC3339)
 	out := make([]item, 0, len(items))
 	for _, b := range items {
-		out = append(out, toItem(b))
+		it := toItem(b)
+		if u, ok := usage[b.BucketName]; ok {
+			it.UsedBytes = u.UsedBytes
+			it.ObjectCount = u.ObjectCount
+			it.CollectedAt = &now
+		}
+		out = append(out, it)
 	}
 	httpx.JSON(w, http.StatusOK, map[string]any{"items": out, "total": len(out)})
 }
