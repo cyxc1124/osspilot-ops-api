@@ -121,6 +121,21 @@ func (c *Client) GetAccess(ctx context.Context, username string) (*AccessItem, e
 	return &out, nil
 }
 
+func (c *Client) ForceUnlock(ctx context.Context, bucket, key string) (bool, error) {
+	if c == nil {
+		return false, &HTTPError{Status: http.StatusServiceUnavailable, Detail: "tenant projection is not configured"}
+	}
+	var out struct {
+		Unlocked bool `json:"unlocked"`
+	}
+	if err := c.doJSON(ctx, http.MethodPost, "/internal/file-locks/force-unlock", map[string]string{
+		"bucket_name": bucket, "object_key": key,
+	}, &out); err != nil {
+		return false, err
+	}
+	return out.Unlocked, nil
+}
+
 func (c *Client) PutSettings(ctx context.Context, settings map[string]string) error {
 	if c == nil {
 		return nil

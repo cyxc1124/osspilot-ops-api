@@ -17,6 +17,7 @@ import (
 	"github.com/cyxc1124/osspilot-ops-api/internal/buckets"
 	"github.com/cyxc1124/osspilot-ops-api/internal/ceph"
 	"github.com/cyxc1124/osspilot-ops-api/internal/config"
+	"github.com/cyxc1124/osspilot-ops-api/internal/filelocks"
 	"github.com/cyxc1124/osspilot-ops-api/internal/grants"
 	"github.com/cyxc1124/osspilot-ops-api/internal/httpx"
 	"github.com/cyxc1124/osspilot-ops-api/internal/lifecycle"
@@ -43,6 +44,7 @@ type apiHandlers struct {
 	alerts     *alerts.Handler
 	access     *access.Handler
 	tenantrbac *tenantrbac.Handler
+	filelocks  *filelocks.Handler
 }
 
 func newMux(h apiHandlers) http.Handler {
@@ -89,6 +91,9 @@ func newMux(h apiHandlers) http.Handler {
 	}
 	if h.tenantrbac != nil {
 		h.tenantrbac.Register(mux)
+	}
+	if h.filelocks != nil {
+		h.filelocks.Register(mux)
 	}
 	return httpx.CORS(mux)
 }
@@ -166,12 +171,13 @@ func main() {
 	alertH := alerts.NewHandler(alertStore, statsStore, bucketStore, grantStore, proj, authH.RequireUser, authH.RequireAdmin)
 	accessH := access.NewHandler(accountStore, proj, auditStore, authH.RequireAdmin)
 	rbacH := tenantrbac.NewHandler(accountStore, proj, authH.RequireAdmin)
+	locksH := filelocks.NewHandler(proj, auditStore, authH.RequireAdmin)
 	addr := cfg.HTTPAddr
 	slog.Info("listen", "addr", addr)
 	if err := http.ListenAndServe(addr, newMux(apiHandlers{
 		auth: authH, users: usersH, regions: regionH, settings: settingsH,
 		accounts: accountsH, buckets: bucketsH, grants: grantsH, lifecycle: lifeH, ceph: cephH,
-		audit: auditH, stats: statsH, alerts: alertH, access: accessH, tenantrbac: rbacH,
+		audit: auditH, stats: statsH, alerts: alertH, access: accessH, tenantrbac: rbacH, filelocks: locksH,
 	})); err != nil {
 		slog.Error("server", "err", err)
 		os.Exit(1)

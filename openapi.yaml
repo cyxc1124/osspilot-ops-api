@@ -517,4 +517,10 @@ paths:
           description: disabled
         "409":
           description: not approved
+  /api/file-locks/force-unlock:
+    post:
+      summary: Force release a tenant edit lock (platform_admin)
+      responses:
+        "200":
+          description: unlocked
 
