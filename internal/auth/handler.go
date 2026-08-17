@@ -8,14 +8,31 @@ import (
 	"github.com/cyxc1124/osspilot-ops-api/internal/httpx"
 )
 
+type auditor interface {
+	Record(r *http.Request, userID int64, username, action, status, errMsg string)
+}
+
 type Handler struct {
 	store  *Store
 	secret string
 	ttl    time.Duration
+	log    auditor
 }
 
-func NewHandler(store *Store, secret string, ttl time.Duration) *Handler {
-	return &Handler{store: store, secret: secret, ttl: ttl}
+func NewHandler(store *Store, secret string, ttl time.Duration, log auditor) *Handler {
+	return &Handler{store: store, secret: secret, ttl: ttl, log: log}
+}
+
+func (h *Handler) audit(r *http.Request, user *User, username, action, status, errMsg string) {
+	if h.log == nil {
+		return
+	}
+	var id int64
+	if user != nil {
+		id = user.ID
+		username = user.Username
+	}
+	h.log.Record(r, id, username, action, status, errMsg)
 }
 
 func (h *Handler) Register(mux *http.ServeMux) {
@@ -90,6 +107,7 @@ func (h *Handler) login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if user == nil || !CheckPassword(req.Password, user.PasswordHash) {
+		h.audit(r, user, req.Username, "login_failed", "failure", "Invalid username or password")
 		httpx.Error(w, http.StatusUnauthorized, "Invalid username or password")
 		return
 	}
@@ -167,18 +185,22 @@ func (h *Handler) changePassword(w http.ResponseWriter, r *http.Request, user *U
 		return
 	}
 	if !CheckPassword(req.OldPassword, user.PasswordHash) {
-		httpx.Error(w, http.StatusUnauthorized, "Invalid username or password")
+		h.audit(r, user, "", "password_change", "failure", "Current password is incorrect")
+		httpx.Error(w, http.StatusBadRequest, "Current password is incorrect")
 		return
 	}
 	hash, err := HashPassword(req.NewPassword)
 	if err != nil {
+		h.audit(r, user, "", "password_change", "failure", "hash error")
 		httpx.Error(w, http.StatusInternalServerError, "hash error")
 		return
 	}
 	if err := h.store.UpdatePassword(r.Context(), user.ID, hash, time.Now()); err != nil {
+		h.audit(r, user, "", "password_change", "failure", "database error")
 		httpx.Error(w, http.StatusInternalServerError, "database error")
 		return
 	}
+	h.audit(r, user, "", "password_change", "success", "")
 	httpx.JSON(w, http.StatusOK, map[string]string{"message": "password changed"})
 }
 

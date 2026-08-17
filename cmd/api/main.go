@@ -147,7 +147,7 @@ func main() {
 		slog.Warn("DATABASE_URL unset; auth routes return 503")
 	}
 
-	authH := auth.NewHandler(authStore, cfg.JWTSecret, cfg.TokenTTL)
+	authH := auth.NewHandler(authStore, cfg.JWTSecret, cfg.TokenTTL, auditStore)
 	usersH := users.NewHandler(userStore, auditStore, authH.RequireAdmin)
 	regionH := regions.NewHandler(regionStore, authH.RequireUser, authH.RequireAdmin, auditStore)
 	settingsH := settings.NewHandler(settingsStore, regionStore, authH.RequireUser, authH.RequireAdmin, settings.Fallbacks{
