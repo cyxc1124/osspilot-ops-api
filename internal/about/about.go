@@ -9,11 +9,10 @@ import (
 const defaultOwner = "cyxc1124"
 
 type spec struct {
-	ID        string
-	Repo      string
-	Version   string
-	Commit    string
-	SelfBuild bool
+	ID   string
+	Repo string
+	URL  string
+	Path string
 }
 
 type parsed struct {
@@ -41,6 +40,7 @@ type Component struct {
 	UpdateAvailable  *bool   `json:"update_available"`
 	UpdateURL        *string `json:"update_url"`
 	CompareStatus    string  `json:"compare_status"`
+	Reachable        bool    `json:"reachable"`
 }
 
 type Response struct {
@@ -56,13 +56,17 @@ var (
 )
 
 func catalog() []spec {
+	tenantAPI := env("OSSPILOT_TENANT_API_URL")
+	if tenantAPI == "" {
+		tenantAPI = env("TENANT_API_URL")
+	}
 	return []spec{
-		{ID: "tenant-api", Repo: "osspilot-tenant-api", Version: env("OSSPILOT_TENANT_API_VERSION"), Commit: env("OSSPILOT_TENANT_API_COMMIT")},
-		{ID: "tenant-worker", Repo: "osspilot-tenant-worker", Version: env("OSSPILOT_TENANT_WORKER_VERSION"), Commit: env("OSSPILOT_TENANT_WORKER_COMMIT")},
-		{ID: "tenant-web", Repo: "osspilot-tenant-web", Version: env("OSSPILOT_TENANT_WEB_VERSION"), Commit: env("OSSPILOT_TENANT_WEB_COMMIT")},
-		{ID: "ops-api", Repo: "osspilot-ops-api", Version: env("OSSPILOT_OPS_API_VERSION"), Commit: env("OSSPILOT_OPS_API_COMMIT"), SelfBuild: true},
-		{ID: "ops-worker", Repo: "osspilot-ops-worker", Version: env("OSSPILOT_OPS_WORKER_VERSION"), Commit: env("OSSPILOT_OPS_WORKER_COMMIT")},
-		{ID: "ops-web", Repo: "osspilot-ops-web", Version: env("OSSPILOT_OPS_WEB_VERSION"), Commit: env("OSSPILOT_OPS_WEB_COMMIT")},
+		{ID: "tenant-api", Repo: "osspilot-tenant-api", URL: tenantAPI, Path: "/healthz"},
+		{ID: "tenant-worker", Repo: "osspilot-tenant-worker", URL: env("OSSPILOT_TENANT_WORKER_URL"), Path: "/healthz"},
+		{ID: "tenant-web", Repo: "osspilot-tenant-web", URL: env("OSSPILOT_TENANT_WEB_URL"), Path: "/version.json"},
+		{ID: "ops-api", Repo: "osspilot-ops-api"},
+		{ID: "ops-worker", Repo: "osspilot-ops-worker", URL: env("OSSPILOT_OPS_WORKER_URL"), Path: "/healthz"},
+		{ID: "ops-web", Repo: "osspilot-ops-web", URL: env("OSSPILOT_OPS_WEB_URL"), Path: "/version.json"},
 	}
 }
 
@@ -96,23 +100,27 @@ func selfBuild() parsed {
 	return parsed{}
 }
 
-func running(s spec) parsed {
-	if s.SelfBuild {
-		if baked := selfBuild(); baked.Tag != "" || baked.Commit != "" || baked.Branch != "" {
-			return baked
+func fromProbe(tag, branch, commit, version string) parsed {
+	commit = short(commit)
+	if tag != "" {
+		p := parseVersion(tag)
+		p.Commit = commit
+		if version != "" {
+			p.Display = version
 		}
+		return p
 	}
-	p := parseVersion(s.Version)
-	if s.Commit != "" && p.Commit == "" {
-		p.Commit = short(s.Commit)
-		if p.Branch != "" {
-			p.Display = p.Branch + "@" + p.Commit
-		} else if p.Display == "dev" {
-			p.Display = p.Commit
-			p.Channel = "sha"
+	if branch != "" && commit != "" {
+		display := version
+		if display == "" {
+			display = branch + "@" + commit
 		}
+		return parsed{Display: display, Branch: branch, Commit: commit, Channel: channelForBranch(branch)}
 	}
-	return p
+	if version != "" {
+		return parseVersion(version)
+	}
+	return parsed{Display: "dev", Channel: "local"}
 }
 
 func parseVersion(raw string) parsed {

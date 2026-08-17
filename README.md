@@ -28,7 +28,7 @@ go run ./cmd/reset-password -u admin -p 'new-password'   # 或 OPS_RESET_PASSWOR
 - `GET /api/audit-logs`、`GET /api/audit-logs/export`
 - `GET|POST /api/alerts/rules`、`GET|PUT|DELETE /api/alerts/rules/{id}`、渠道与事件、`POST /api/alerts/evaluate`（按配额/桶容量阈值写或关闭 alert_events）
 - `GET /api/tenant-api-access`、`GET /api/tenant-api-access/{account_id}`、`POST .../{approve,reject,disable}`（仅 platform_admin；按用户名对齐租户开通记录）
-- `GET /api/about`（登录即可；六个服务仓运行版本，并和 GitHub 最新发行/分支头比对。运行版本来自 `OSSPILOT_*_VERSION`，运营 API 自身优先用镜像里的 `GIT_TAG` / `GIT_COMMIT`）
+- `GET /api/about`（登录即可；探活读取六个服务仓自己报的版本，再和 GitHub 最新发行/分支头比对。运营 API 读本进程 `GIT_*`；其它组件打 `TENANT_API_URL/healthz`、`OSSPILOT_*_URL` 的 `/healthz` 或 `/version.json`）
 
 迁移后内置 `admin` / `admin`，`must_change_password=true`。首次登录后除改密、`/api/me`、登出外一律 403。新密码至少 8 位且不能与旧密码相同。
 

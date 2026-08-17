@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"log/slog"
 	"net/http"
 	"os"
@@ -16,6 +15,7 @@ import (
 	"github.com/cyxc1124/osspilot-ops-api/internal/audit"
 	"github.com/cyxc1124/osspilot-ops-api/internal/auth"
 	"github.com/cyxc1124/osspilot-ops-api/internal/buckets"
+	"github.com/cyxc1124/osspilot-ops-api/internal/buildinfo"
 	"github.com/cyxc1124/osspilot-ops-api/internal/ceph"
 	"github.com/cyxc1124/osspilot-ops-api/internal/config"
 	"github.com/cyxc1124/osspilot-ops-api/internal/filelocks"
@@ -51,7 +51,7 @@ type apiHandlers struct {
 
 func newMux(h apiHandlers) http.Handler {
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /healthz", healthz)
+	mux.HandleFunc("GET /healthz", buildinfo.Healthz)
 	if h.auth != nil {
 		h.auth.Register(mux)
 	}
@@ -101,11 +101,6 @@ func newMux(h apiHandlers) http.Handler {
 		h.about.Register(mux)
 	}
 	return httpx.CORS(mux)
-}
-
-func healthz(w http.ResponseWriter, _ *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
 }
 
 func main() {

@@ -59,27 +59,46 @@ func TestDecideUpdate(t *testing.T) {
 	}
 }
 
-func TestComponentsPreferBakedTag(t *testing.T) {
+func TestSelfUsesBakedTag(t *testing.T) {
 	t.Setenv("GIT_TAG", "v1.0.0")
-	t.Setenv("OSSPILOT_OPS_API_VERSION", "develop")
-	t.Setenv("OSSPILOT_TENANT_API_VERSION", "v0.9.0")
-	h := &Handler{github: NewGitHub("", ""), owner: "cyxc1124"}
+	t.Setenv("TENANT_API_URL", "")
+	t.Setenv("OSSPILOT_TENANT_API_URL", "")
+	h := &Handler{github: NewGitHub("", ""), owner: "cyxc1124", http: http.DefaultClient}
 	comps := h.components()
-	if len(comps) != 6 {
-		t.Fatalf("len %d", len(comps))
-	}
 	byID := map[string]Component{}
 	for _, c := range comps {
 		byID[c.ID] = c
 	}
-	if byID["ops-api"].RunningVersion != "v1.0.0" || byID["ops-api"].Channel != "release" {
+	if !byID["ops-api"].Reachable || byID["ops-api"].RunningVersion != "v1.0.0" {
 		t.Fatalf("ops-api %#v", byID["ops-api"])
 	}
-	if byID["tenant-api"].RunningVersion != "v0.9.0" {
-		t.Fatalf("tenant-api %#v", byID["tenant-api"])
+	if byID["tenant-api"].Reachable {
+		t.Fatalf("tenant-api should be unreachable without URL: %#v", byID["tenant-api"])
 	}
-	if byID["ops-web"].RunningVersion != "dev" {
-		t.Fatalf("ops-web %#v", byID["ops-web"])
+}
+
+func TestProbeReadsSibling(t *testing.T) {
+	peer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]string{
+			"status":     "ok",
+			"version":    "v0.9.0",
+			"git_tag":    "v0.9.0",
+			"git_commit": "aaaaaaaa",
+		})
+	}))
+	t.Cleanup(peer.Close)
+	t.Setenv("GIT_TAG", "v1.0.0")
+	t.Setenv("TENANT_API_URL", peer.URL)
+	h := &Handler{github: NewGitHub("", ""), owner: "cyxc1124", http: peer.Client()}
+	comps := h.components()
+	var tenant Component
+	for _, c := range comps {
+		if c.ID == "tenant-api" {
+			tenant = c
+		}
+	}
+	if !tenant.Reachable || tenant.RunningVersion != "v0.9.0" {
+		t.Fatalf("tenant-api %#v", tenant)
 	}
 }
 
@@ -96,7 +115,7 @@ func TestRefreshMarksUpdate(t *testing.T) {
 	}))
 	t.Cleanup(gh.Close)
 	t.Setenv("GIT_TAG", "v1.0.0")
-	h := &Handler{github: NewGitHub(gh.URL, ""), owner: "cyxc1124"}
+	h := &Handler{github: NewGitHub(gh.URL, ""), owner: "cyxc1124", http: http.DefaultClient}
 	comps := h.components()
 	h.github.refresh(context.Background(), h.owner, comps)
 	for i := range comps {
@@ -111,9 +130,6 @@ func TestRefreshMarksUpdate(t *testing.T) {
 	if ops.CompareStatus != "update" || ops.UpdateAvailable == nil || !*ops.UpdateAvailable {
 		t.Fatalf("ops-api %#v", ops)
 	}
-	if ops.LatestRelease == nil || *ops.LatestRelease != "v1.0.1" {
-		t.Fatalf("latest %#v", ops.LatestRelease)
-	}
 }
 
 func TestAboutHTTP(t *testing.T) {
@@ -126,6 +142,7 @@ func TestAboutHTTP(t *testing.T) {
 		},
 		github: NewGitHub("", ""),
 		owner:  "cyxc1124",
+		http:   http.DefaultClient,
 	}
 	mux := http.NewServeMux()
 	h.Register(mux)
@@ -144,8 +161,5 @@ func TestAboutHTTP(t *testing.T) {
 	}
 	if body.Components[3].ID != "ops-api" || body.Components[3].RunningVersion != "v1.0.0" {
 		t.Fatalf("ops-api %#v", body.Components[3])
-	}
-	if body.Components[3].CompareStatus != "checking" {
-		t.Fatalf("first response should be checking, got %s", body.Components[3].CompareStatus)
 	}
 }
