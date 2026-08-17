@@ -87,6 +87,17 @@ func (s *Store) List(ctx context.Context) ([]Record, error) {
 	return out, rows.Err()
 }
 
+func (s *Store) UsernameByID(ctx context.Context, id int64) (string, bool) {
+	if s == nil {
+		return "", false
+	}
+	u, err := s.GetByID(ctx, id)
+	if err != nil || u == nil {
+		return "", false
+	}
+	return u.Username, true
+}
+
 func (s *Store) GetByID(ctx context.Context, id int64) (*Record, error) {
 	u, err := scan(s.pool.QueryRow(ctx, `SELECT `+cols+` `+fromJoin+` WHERE a.id = $1`, id))
 	if err == pgx.ErrNoRows {

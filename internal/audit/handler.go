@@ -1,6 +1,7 @@
 package audit
 
 import (
+	"context"
 	"encoding/csv"
 	"encoding/json"
 	"io"
@@ -11,20 +12,24 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cyxc1124/osspilot-ops-api/internal/accounts"
 	"github.com/cyxc1124/osspilot-ops-api/internal/auth"
 	"github.com/cyxc1124/osspilot-ops-api/internal/httpx"
 	"github.com/cyxc1124/osspilot-ops-api/internal/project"
 )
 
+// ponytail: avoid audit↔accounts import cycle; only username is needed to merge tenant logs.
+type tenantNamer interface {
+	UsernameByID(ctx context.Context, id int64) (string, bool)
+}
+
 type Handler struct {
 	store    *Store
 	project  *project.Client
-	accounts *accounts.Store
+	accounts tenantNamer
 	protect  func(auth.UserHandler) http.HandlerFunc
 }
 
-func NewHandler(store *Store, protect func(auth.UserHandler) http.HandlerFunc, proj *project.Client, accounts *accounts.Store) *Handler {
+func NewHandler(store *Store, protect func(auth.UserHandler) http.HandlerFunc, proj *project.Client, accounts tenantNamer) *Handler {
 	return &Handler{store: store, protect: protect, project: proj, accounts: accounts}
 }
 
@@ -182,11 +187,11 @@ func (h *Handler) tenantAudit(r *http.Request, f Filter, page, pageSize int) ([]
 		if h.accounts == nil {
 			return nil, 0
 		}
-		acct, err := h.accounts.GetByID(r.Context(), *f.TenantID)
-		if err != nil || acct == nil {
+		name, ok := h.accounts.UsernameByID(r.Context(), *f.TenantID)
+		if !ok {
 			return nil, 0
 		}
-		q.Set("account_name", acct.Username)
+		q.Set("account_name", name)
 	}
 	items, total, err := h.project.ListAudit(r.Context(), q)
 	if err != nil {

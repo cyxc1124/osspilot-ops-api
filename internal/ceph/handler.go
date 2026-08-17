@@ -10,6 +10,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 
+	"github.com/cyxc1124/osspilot-ops-api/internal/audit"
 	"github.com/cyxc1124/osspilot-ops-api/internal/auth"
 	"github.com/cyxc1124/osspilot-ops-api/internal/httpx"
 	"github.com/cyxc1124/osspilot-ops-api/internal/settings"
@@ -18,12 +19,13 @@ import (
 type Handler struct {
 	settings *settings.Handler
 	mgmt     *client
+	audit    *audit.Store
 	read     func(auth.UserHandler) http.HandlerFunc
 	write    func(auth.UserHandler) http.HandlerFunc
 }
 
-func NewHandler(settingsH *settings.Handler, read, write func(auth.UserHandler) http.HandlerFunc) *Handler {
-	return &Handler{settings: settingsH, mgmt: newClient(), read: read, write: write}
+func NewHandler(settingsH *settings.Handler, read, write func(auth.UserHandler) http.HandlerFunc, auditStore *audit.Store) *Handler {
+	return &Handler{settings: settingsH, mgmt: newClient(), read: read, write: write, audit: auditStore}
 }
 
 func (h *Handler) Register(mux *http.ServeMux) {
@@ -133,7 +135,7 @@ func (h *Handler) testS3(w http.ResponseWriter, r *http.Request, _ *auth.User) {
 	httpx.JSON(w, http.StatusOK, map[string]any{"ok": true, "endpoint": rt.S3Endpoint, "bucket_count": n, "error": nil})
 }
 
-func (h *Handler) restart(w http.ResponseWriter, r *http.Request, _ *auth.User) {
+func (h *Handler) restart(w http.ResponseWriter, r *http.Request, user *auth.User) {
 	rt, ok := h.runtime(w, r)
 	if !ok {
 		return
@@ -148,10 +150,17 @@ func (h *Handler) restart(w http.ResponseWriter, r *http.Request, _ *auth.User) 
 		}
 	}
 	payload, err := h.mgmt.post(r.Context(), rt.CephMgmtAPIURL, "/rgw/restart", map[string]any{"instance_id": req.InstanceID}, 120*time.Second)
+	status, msg := "success", ""
+	if err != nil {
+		status, msg = "failure", err.Error()
+	}
+	if user != nil {
+		audit.Write(h.audit, r, user.ID, user.Username, "restart_rgw", "", status, msg)
+	}
 	h.writeRestart(w, payload, err)
 }
 
-func (h *Handler) rolling(w http.ResponseWriter, r *http.Request, _ *auth.User) {
+func (h *Handler) rolling(w http.ResponseWriter, r *http.Request, user *auth.User) {
 	rt, ok := h.runtime(w, r)
 	if !ok {
 		return
@@ -174,6 +183,13 @@ func (h *Handler) rolling(w http.ResponseWriter, r *http.Request, _ *auth.User) 
 		}
 	}
 	payload, err := h.mgmt.post(r.Context(), rt.CephMgmtAPIURL, "/rgw/rolling-restart", map[string]any{"wait_seconds": wait}, 120*time.Second)
+	status, msg := "success", ""
+	if err != nil {
+		status, msg = "failure", err.Error()
+	}
+	if user != nil {
+		audit.Write(h.audit, r, user.ID, user.Username, "rolling_restart_rgw", "", status, msg)
+	}
 	h.writeRestart(w, payload, err)
 }
 

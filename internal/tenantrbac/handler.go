@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/cyxc1124/osspilot-ops-api/internal/accounts"
+	"github.com/cyxc1124/osspilot-ops-api/internal/audit"
 	"github.com/cyxc1124/osspilot-ops-api/internal/auth"
 	"github.com/cyxc1124/osspilot-ops-api/internal/httpx"
 	"github.com/cyxc1124/osspilot-ops-api/internal/project"
@@ -15,11 +16,12 @@ import (
 type Handler struct {
 	accounts *accounts.Store
 	project  *project.Client
+	audit    *audit.Store
 	protect  func(auth.UserHandler) http.HandlerFunc
 }
 
-func NewHandler(accounts *accounts.Store, proj *project.Client, protect func(auth.UserHandler) http.HandlerFunc) *Handler {
-	return &Handler{accounts: accounts, project: proj, protect: protect}
+func NewHandler(accounts *accounts.Store, proj *project.Client, auditStore *audit.Store, protect func(auth.UserHandler) http.HandlerFunc) *Handler {
+	return &Handler{accounts: accounts, project: proj, audit: auditStore, protect: protect}
 }
 
 func (h *Handler) Register(mux *http.ServeMux) {
@@ -29,7 +31,7 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	}
 }
 
-func (h *Handler) proxy(w http.ResponseWriter, r *http.Request, _ *auth.User) {
+func (h *Handler) proxy(w http.ResponseWriter, r *http.Request, user *auth.User) {
 	if h.accounts == nil {
 		httpx.Error(w, http.StatusServiceUnavailable, "database is not configured")
 		return
@@ -70,6 +72,9 @@ func (h *Handler) proxy(w http.ResponseWriter, r *http.Request, _ *auth.User) {
 	if raw.Status >= 200 && raw.Status < 300 {
 		if remapped, err := remapAccountID(body, acct.ID); err == nil {
 			body = remapped
+		}
+		if user != nil && r.Method != http.MethodGet {
+			audit.Write(h.audit, r, user.ID, user.Username, "modify_permission", "", "success", "")
 		}
 	}
 	if raw.ContentType != "" {
