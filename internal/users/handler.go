@@ -9,17 +9,19 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
+	"github.com/cyxc1124/osspilot-ops-api/internal/audit"
 	"github.com/cyxc1124/osspilot-ops-api/internal/auth"
 	"github.com/cyxc1124/osspilot-ops-api/internal/httpx"
 )
 
 type Handler struct {
 	store   *Store
+	audit   *audit.Store
 	protect func(auth.UserHandler) http.HandlerFunc
 }
 
-func NewHandler(store *Store, protect func(auth.UserHandler) http.HandlerFunc) *Handler {
-	return &Handler{store: store, protect: protect}
+func NewHandler(store *Store, auditStore *audit.Store, protect func(auth.UserHandler) http.HandlerFunc) *Handler {
+	return &Handler{store: store, audit: auditStore, protect: protect}
 }
 
 func (h *Handler) Register(mux *http.ServeMux) {
@@ -82,7 +84,7 @@ func (h *Handler) list(w http.ResponseWriter, r *http.Request, _ *auth.User) {
 	httpx.JSON(w, http.StatusOK, map[string]any{"items": out, "total": len(out)})
 }
 
-func (h *Handler) create(w http.ResponseWriter, r *http.Request, _ *auth.User) {
+func (h *Handler) create(w http.ResponseWriter, r *http.Request, user *auth.User) {
 	if h.store == nil {
 		httpx.Error(w, http.StatusServiceUnavailable, "database is not configured")
 		return
@@ -123,6 +125,9 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request, _ *auth.User) {
 	if err != nil {
 		httpx.Error(w, http.StatusInternalServerError, "database error")
 		return
+	}
+	if user != nil {
+		audit.Write(h.audit, r, user.ID, user.Username, "user_create", "", "success", "")
 	}
 	httpx.JSON(w, http.StatusCreated, toResponse(*u))
 }
@@ -182,6 +187,13 @@ func (h *Handler) update(w http.ResponseWriter, r *http.Request, actor *auth.Use
 		httpx.Error(w, http.StatusInternalServerError, "database error")
 		return
 	}
+	action := "user_update"
+	if roles != nil {
+		action = "modify_user_role"
+	}
+	if actor != nil {
+		audit.Write(h.audit, r, actor.ID, actor.Username, action, "", "success", "")
+	}
 	httpx.JSON(w, http.StatusOK, toResponse(*out))
 }
 
@@ -207,10 +219,13 @@ func (h *Handler) remove(w http.ResponseWriter, r *http.Request, actor *auth.Use
 		httpx.Error(w, http.StatusInternalServerError, "database error")
 		return
 	}
+	if actor != nil {
+		audit.Write(h.audit, r, actor.ID, actor.Username, "user_delete", "", "success", "")
+	}
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (h *Handler) resetPassword(w http.ResponseWriter, r *http.Request, _ *auth.User) {
+func (h *Handler) resetPassword(w http.ResponseWriter, r *http.Request, user *auth.User) {
 	id, ok := pathID(w, r)
 	if !ok {
 		return
@@ -245,6 +260,9 @@ func (h *Handler) resetPassword(w http.ResponseWriter, r *http.Request, _ *auth.
 	if err := h.store.UpdatePassword(r.Context(), id, hash, time.Now()); err != nil {
 		httpx.Error(w, http.StatusInternalServerError, "database error")
 		return
+	}
+	if user != nil {
+		audit.Write(h.audit, r, user.ID, user.Username, "user_password_reset", "", "success", "")
 	}
 	httpx.JSON(w, http.StatusOK, map[string]string{"message": "Password reset"})
 }

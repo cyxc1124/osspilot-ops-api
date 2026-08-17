@@ -147,9 +147,9 @@ func main() {
 		slog.Warn("DATABASE_URL unset; auth routes return 503")
 	}
 
-	authH := auth.NewHandler(authStore, cfg.JWTSecret, cfg.TokenTTL)
-	usersH := users.NewHandler(userStore, authH.RequireAdmin)
-	regionH := regions.NewHandler(regionStore, authH.RequireUser, authH.RequireAdmin)
+	authH := auth.NewHandler(authStore, cfg.JWTSecret, cfg.TokenTTL, auditStore)
+	usersH := users.NewHandler(userStore, auditStore, authH.RequireAdmin)
+	regionH := regions.NewHandler(regionStore, authH.RequireUser, authH.RequireAdmin, auditStore)
 	settingsH := settings.NewHandler(settingsStore, regionStore, authH.RequireUser, authH.RequireAdmin, settings.Fallbacks{
 		S3Endpoint:        cfg.S3Endpoint,
 		RGWAccessKey:      cfg.RGWAccessKey,
@@ -160,17 +160,17 @@ func main() {
 		ObjectHTTPSDomain: cfg.ObjectHTTPSDomain,
 		OfficeURL:         cfg.OfficeURL,
 		CephMgmtAPIURL:    cfg.CephMgmtAPIURL,
-	}, proj)
-	accountsH := accounts.NewHandler(accountStore, regionStore, proj, authH.RequireAdmin)
+	}, proj, auditStore)
+	accountsH := accounts.NewHandler(accountStore, regionStore, proj, auditStore, authH.RequireAdmin)
 	bucketsH := buckets.NewHandler(bucketStore, regionStore, settingsH, proj, auditStore, authH.RequireAdmin)
 	grantsH := grants.NewHandler(grantStore, accountStore, bucketStore, proj, authH.RequireAdmin)
-	lifeH := lifecycle.NewHandler(lifeStore, bucketStore, authH.RequireAdmin)
-	cephH := ceph.NewHandler(settingsH, authH.RequireUser, authH.RequireAdmin)
+	lifeH := lifecycle.NewHandler(lifeStore, bucketStore, auditStore, authH.RequireAdmin)
+	cephH := ceph.NewHandler(settingsH, authH.RequireUser, authH.RequireAdmin, auditStore)
 	auditH := audit.NewHandler(auditStore, authH.RequireUser, proj, accountStore)
 	statsH := stats.NewHandler(statsStore, grantStore, settingsH, proj, authH.RequireUser)
 	alertH := alerts.NewHandler(alertStore, statsStore, bucketStore, grantStore, proj, settingsH, authH.RequireUser, authH.RequireAdmin)
 	accessH := access.NewHandler(accountStore, proj, auditStore, authH.RequireAdmin)
-	rbacH := tenantrbac.NewHandler(accountStore, proj, authH.RequireAdmin)
+	rbacH := tenantrbac.NewHandler(accountStore, proj, auditStore, authH.RequireAdmin)
 	locksH := filelocks.NewHandler(proj, auditStore, authH.RequireAdmin)
 	addr := cfg.HTTPAddr
 	slog.Info("listen", "addr", addr)

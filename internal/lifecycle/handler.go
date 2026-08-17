@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cyxc1124/osspilot-ops-api/internal/audit"
 	"github.com/cyxc1124/osspilot-ops-api/internal/auth"
 	"github.com/cyxc1124/osspilot-ops-api/internal/buckets"
 	"github.com/cyxc1124/osspilot-ops-api/internal/httpx"
@@ -17,11 +18,12 @@ import (
 type Handler struct {
 	store   *Store
 	buckets *buckets.Store
+	audit   *audit.Store
 	protect func(auth.UserHandler) http.HandlerFunc
 }
 
-func NewHandler(store *Store, buckets *buckets.Store, protect func(auth.UserHandler) http.HandlerFunc) *Handler {
-	return &Handler{store: store, buckets: buckets, protect: protect}
+func NewHandler(store *Store, buckets *buckets.Store, auditStore *audit.Store, protect func(auth.UserHandler) http.HandlerFunc) *Handler {
+	return &Handler{store: store, buckets: buckets, audit: auditStore, protect: protect}
 }
 
 func (h *Handler) Register(mux *http.ServeMux) {
@@ -96,7 +98,7 @@ func (h *Handler) list(w http.ResponseWriter, r *http.Request, _ *auth.User) {
 	httpx.JSON(w, http.StatusOK, map[string]any{"items": out, "total": len(out)})
 }
 
-func (h *Handler) create(w http.ResponseWriter, r *http.Request, _ *auth.User) {
+func (h *Handler) create(w http.ResponseWriter, r *http.Request, user *auth.User) {
 	if !h.ready(w) {
 		return
 	}
@@ -151,10 +153,13 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request, _ *auth.User) {
 		httpx.Error(w, http.StatusInternalServerError, "database error")
 		return
 	}
+	if user != nil {
+		audit.Write(h.audit, r, user.ID, user.Username, "create_lifecycle_rule", b.BucketName, "success", "")
+	}
 	httpx.JSON(w, http.StatusCreated, toJSON(*item))
 }
 
-func (h *Handler) update(w http.ResponseWriter, r *http.Request, _ *auth.User) {
+func (h *Handler) update(w http.ResponseWriter, r *http.Request, user *auth.User) {
 	item := h.load(w, r)
 	if item == nil {
 		return
@@ -224,10 +229,13 @@ func (h *Handler) update(w http.ResponseWriter, r *http.Request, _ *auth.User) {
 		httpx.Error(w, http.StatusInternalServerError, "database error")
 		return
 	}
+	if user != nil {
+		audit.Write(h.audit, r, user.ID, user.Username, "update_lifecycle_rule", item.BucketName, "success", "")
+	}
 	httpx.JSON(w, http.StatusOK, toJSON(*out))
 }
 
-func (h *Handler) remove(w http.ResponseWriter, r *http.Request, _ *auth.User) {
+func (h *Handler) remove(w http.ResponseWriter, r *http.Request, user *auth.User) {
 	if !h.ready(w) {
 		return
 	}
@@ -235,6 +243,7 @@ func (h *Handler) remove(w http.ResponseWriter, r *http.Request, _ *auth.User) {
 	if !ok {
 		return
 	}
+	existing, _ := h.store.GetByID(r.Context(), id)
 	okDel, err := h.store.Delete(r.Context(), id)
 	if err != nil {
 		httpx.Error(w, http.StatusInternalServerError, "database error")
@@ -243,6 +252,13 @@ func (h *Handler) remove(w http.ResponseWriter, r *http.Request, _ *auth.User) {
 	if !okDel {
 		httpx.Error(w, http.StatusNotFound, "Lifecycle rule not found")
 		return
+	}
+	name := ""
+	if existing != nil {
+		name = existing.BucketName
+	}
+	if user != nil {
+		audit.Write(h.audit, r, user.ID, user.Username, "delete_lifecycle_rule", name, "success", "")
 	}
 	w.WriteHeader(http.StatusNoContent)
 }

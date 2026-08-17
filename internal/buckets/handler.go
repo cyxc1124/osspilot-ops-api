@@ -3,6 +3,7 @@ package buckets
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -190,6 +191,11 @@ func (h *Handler) register(r *http.Request, user *auth.User, name string, displa
 		return nil, err
 	}
 	h.auditRegister(r, user, name, "success", "")
+	if h.project != nil {
+		if _, err := h.project.EnqueueInventory(r.Context(), name); err != nil {
+			slog.Warn("enqueue inventory after register", "bucket", name, "err", err)
+		}
+	}
 	return b, nil
 }
 

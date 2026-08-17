@@ -38,6 +38,11 @@ type Account struct {
 	QuotaBytes         *int64  `json:"quota_bytes"`
 	ObjectLimit        *int64  `json:"object_limit"`
 	DailyUploadBytes   *int64  `json:"daily_upload_bytes"`
+	StorageRegionID    *int64  `json:"storage_region_id"`
+	StorageRegionCode  *string `json:"storage_region_code"`
+	StorageRegionName  *string `json:"storage_region_name"`
+	S3Endpoint         *string `json:"s3_endpoint"`
+	S3RegionName       *string `json:"s3_region_name"`
 }
 
 type BucketItem struct {

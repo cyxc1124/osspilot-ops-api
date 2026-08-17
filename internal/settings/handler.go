@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cyxc1124/osspilot-ops-api/internal/audit"
 	"github.com/cyxc1124/osspilot-ops-api/internal/auth"
 	"github.com/cyxc1124/osspilot-ops-api/internal/httpx"
 	"github.com/cyxc1124/osspilot-ops-api/internal/project"
@@ -31,12 +32,13 @@ type Handler struct {
 	regions   *regions.Store
 	fallbacks Fallbacks
 	project   *project.Client
+	audit     *audit.Store
 	read      func(auth.UserHandler) http.HandlerFunc
 	write     func(auth.UserHandler) http.HandlerFunc
 }
 
-func NewHandler(store *Store, regionStore *regions.Store, read, write func(auth.UserHandler) http.HandlerFunc, fb Fallbacks, proj *project.Client) *Handler {
-	return &Handler{store: store, regions: regionStore, read: read, write: write, fallbacks: fb, project: proj}
+func NewHandler(store *Store, regionStore *regions.Store, read, write func(auth.UserHandler) http.HandlerFunc, fb Fallbacks, proj *project.Client, auditStore *audit.Store) *Handler {
+	return &Handler{store: store, regions: regionStore, read: read, write: write, fallbacks: fb, project: proj, audit: auditStore}
 }
 
 func (h *Handler) Register(mux *http.ServeMux) {
@@ -147,7 +149,13 @@ func (h *Handler) projectTenant(ctx context.Context, out publicSettings) {
 		"version_cleanup_enabled":   boolStr(out.VersionCleanupEnabled),
 		"multipart_stale_days":      strconv.Itoa(out.MultipartStaleDays),
 		"multipart_cleanup_enabled": boolStr(out.MultipartCleanupEnabled),
-		"max_upload_bytes":          strconv.FormatInt(out.MaxUploadBytes, 10),
+		"max_upload_bytes":                 strconv.FormatInt(out.MaxUploadBytes, 10),
+		"default_upload_presign_expires": strconv.Itoa(out.DefaultUploadPresignExpires),
+	}
+	if out.OfficeURL != nil && strings.TrimSpace(*out.OfficeURL) != "" {
+		settings["office_url"] = strings.TrimSpace(*out.OfficeURL)
+	} else {
+		settings["office_url"] = ""
 	}
 	if out.DownloadCDNURL != nil {
 		settings["download_cdn_url"] = *out.DownloadCDNURL
@@ -199,7 +207,7 @@ func (h *Handler) projectTenant(ctx context.Context, out publicSettings) {
 	}
 }
 
-func (h *Handler) put(w http.ResponseWriter, r *http.Request, _ *auth.User) {
+func (h *Handler) put(w http.ResponseWriter, r *http.Request, user *auth.User) {
 	if h.store == nil {
 		httpx.Error(w, http.StatusServiceUnavailable, "database is not configured")
 		return
@@ -371,6 +379,9 @@ func (h *Handler) put(w http.ResponseWriter, r *http.Request, _ *auth.User) {
 		return
 	}
 	h.projectTenant(r.Context(), out)
+	if user != nil {
+		audit.Write(h.audit, r, user.ID, user.Username, "update_system_settings", "", "success", "")
+	}
 	httpx.JSON(w, http.StatusOK, out)
 }
 

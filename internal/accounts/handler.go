@@ -10,6 +10,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
+	"github.com/cyxc1124/osspilot-ops-api/internal/audit"
 	"github.com/cyxc1124/osspilot-ops-api/internal/auth"
 	"github.com/cyxc1124/osspilot-ops-api/internal/httpx"
 	"github.com/cyxc1124/osspilot-ops-api/internal/project"
@@ -20,11 +21,12 @@ type Handler struct {
 	store   *Store
 	regions *regions.Store
 	project *project.Client
+	audit   *audit.Store
 	protect func(auth.UserHandler) http.HandlerFunc
 }
 
-func NewHandler(store *Store, regions *regions.Store, project *project.Client, protect func(auth.UserHandler) http.HandlerFunc) *Handler {
-	return &Handler{store: store, regions: regions, project: project, protect: protect}
+func NewHandler(store *Store, regions *regions.Store, project *project.Client, auditStore *audit.Store, protect func(auth.UserHandler) http.HandlerFunc) *Handler {
+	return &Handler{store: store, regions: regions, project: project, audit: auditStore, protect: protect}
 }
 
 func (h *Handler) Register(mux *http.ServeMux) {
@@ -107,7 +109,7 @@ func (h *Handler) list(w http.ResponseWriter, r *http.Request, _ *auth.User) {
 	httpx.JSON(w, http.StatusOK, map[string]any{"items": out, "total": len(out)})
 }
 
-func (h *Handler) create(w http.ResponseWriter, r *http.Request, _ *auth.User) {
+func (h *Handler) create(w http.ResponseWriter, r *http.Request, user *auth.User) {
 	if h.store == nil {
 		httpx.Error(w, http.StatusServiceUnavailable, "database is not configured")
 		return
@@ -149,6 +151,9 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request, _ *auth.User) {
 		httpx.Error(w, http.StatusBadGateway, "tenant projection failed")
 		return
 	}
+	if user != nil {
+		audit.Write(h.audit, r, user.ID, user.Username, "create_tenant", "", "success", "")
+	}
 	httpx.JSON(w, http.StatusCreated, toResponse(*u))
 }
 
@@ -160,7 +165,7 @@ func (h *Handler) get(w http.ResponseWriter, r *http.Request, _ *auth.User) {
 	httpx.JSON(w, http.StatusOK, toResponse(*u))
 }
 
-func (h *Handler) update(w http.ResponseWriter, r *http.Request, _ *auth.User) {
+func (h *Handler) update(w http.ResponseWriter, r *http.Request, user *auth.User) {
 	u := h.load(w, r)
 	if u == nil {
 		return
@@ -232,10 +237,13 @@ func (h *Handler) update(w http.ResponseWriter, r *http.Request, _ *auth.User) {
 		httpx.Error(w, http.StatusBadGateway, "tenant projection failed")
 		return
 	}
+	if user != nil {
+		audit.Write(h.audit, r, user.ID, user.Username, "update_tenant", "", "success", "")
+	}
 	httpx.JSON(w, http.StatusOK, toResponse(*out))
 }
 
-func (h *Handler) remove(w http.ResponseWriter, r *http.Request, _ *auth.User) {
+func (h *Handler) remove(w http.ResponseWriter, r *http.Request, user *auth.User) {
 	u := h.load(w, r)
 	if u == nil {
 		return
@@ -253,10 +261,13 @@ func (h *Handler) remove(w http.ResponseWriter, r *http.Request, _ *auth.User) {
 		httpx.Error(w, http.StatusInternalServerError, "database error")
 		return
 	}
+	if user != nil {
+		audit.Write(h.audit, r, user.ID, user.Username, "delete_tenant", "", "success", "")
+	}
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (h *Handler) resetPassword(w http.ResponseWriter, r *http.Request, _ *auth.User) {
+func (h *Handler) resetPassword(w http.ResponseWriter, r *http.Request, user *auth.User) {
 	id, ok := pathID(w, r)
 	if !ok {
 		return
@@ -297,6 +308,9 @@ func (h *Handler) resetPassword(w http.ResponseWriter, r *http.Request, _ *auth.
 		httpx.Error(w, http.StatusBadGateway, "tenant projection failed")
 		return
 	}
+	if user != nil {
+		audit.Write(h.audit, r, user.ID, user.Username, "user_password_reset", "", "success", "")
+	}
 	httpx.JSON(w, http.StatusOK, map[string]string{"message": "Password reset"})
 }
 
@@ -305,7 +319,7 @@ func (h *Handler) pushAccount(r *http.Request, u Record, must *bool) error {
 	if err != nil {
 		return err
 	}
-	return h.project.UpsertAccount(r.Context(), project.Account{
+	acct := project.Account{
 		Username:           u.Username,
 		PasswordHash:       hash,
 		DisplayName:        u.DisplayName,
@@ -316,7 +330,16 @@ func (h *Handler) pushAccount(r *http.Request, u Record, must *bool) error {
 		QuotaBytes:         u.QuotaBytes,
 		ObjectLimit:        u.ObjectLimit,
 		DailyUploadBytes:   u.DailyUploadBytes,
-	})
+		StorageRegionID:    u.StorageRegionID,
+	}
+	if u.StorageRegion != nil {
+		code, name, ep, reg := u.StorageRegion.Code, u.StorageRegion.Name, u.StorageRegion.S3Endpoint, u.StorageRegion.S3RegionName
+		acct.StorageRegionCode = &code
+		acct.StorageRegionName = &name
+		acct.S3Endpoint = &ep
+		acct.S3RegionName = &reg
+	}
+	return h.project.UpsertAccount(r.Context(), acct)
 }
 
 func (h *Handler) load(w http.ResponseWriter, r *http.Request) *Record {

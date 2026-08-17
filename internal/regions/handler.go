@@ -9,18 +9,20 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
+	"github.com/cyxc1124/osspilot-ops-api/internal/audit"
 	"github.com/cyxc1124/osspilot-ops-api/internal/auth"
 	"github.com/cyxc1124/osspilot-ops-api/internal/httpx"
 )
 
 type Handler struct {
 	store *Store
+	audit *audit.Store
 	read  func(auth.UserHandler) http.HandlerFunc
 	write func(auth.UserHandler) http.HandlerFunc
 }
 
-func NewHandler(store *Store, read, write func(auth.UserHandler) http.HandlerFunc) *Handler {
-	return &Handler{store: store, read: read, write: write}
+func NewHandler(store *Store, read, write func(auth.UserHandler) http.HandlerFunc, auditStore *audit.Store) *Handler {
+	return &Handler{store: store, read: read, write: write, audit: auditStore}
 }
 
 func (h *Handler) Register(mux *http.ServeMux) {
@@ -77,7 +79,7 @@ func (h *Handler) list(w http.ResponseWriter, r *http.Request, _ *auth.User) {
 	httpx.JSON(w, http.StatusOK, map[string]any{"items": out, "total": len(out)})
 }
 
-func (h *Handler) create(w http.ResponseWriter, r *http.Request, _ *auth.User) {
+func (h *Handler) create(w http.ResponseWriter, r *http.Request, user *auth.User) {
 	if h.store == nil {
 		httpx.Error(w, http.StatusServiceUnavailable, "database is not configured")
 		return
@@ -129,10 +131,13 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request, _ *auth.User) {
 		httpx.Error(w, http.StatusInternalServerError, "database error")
 		return
 	}
+	if user != nil {
+		audit.Write(h.audit, r, user.ID, user.Username, "create_storage_region", "", "success", "")
+	}
 	httpx.JSON(w, http.StatusCreated, toResponse(*out))
 }
 
-func (h *Handler) update(w http.ResponseWriter, r *http.Request, _ *auth.User) {
+func (h *Handler) update(w http.ResponseWriter, r *http.Request, user *auth.User) {
 	id, ok := pathID(w, r)
 	if !ok {
 		return
@@ -199,10 +204,13 @@ func (h *Handler) update(w http.ResponseWriter, r *http.Request, _ *auth.User) {
 		httpx.Error(w, http.StatusInternalServerError, "database error")
 		return
 	}
+	if user != nil {
+		audit.Write(h.audit, r, user.ID, user.Username, "update_storage_region", "", "success", "")
+	}
 	httpx.JSON(w, http.StatusOK, toResponse(*out))
 }
 
-func (h *Handler) remove(w http.ResponseWriter, r *http.Request, _ *auth.User) {
+func (h *Handler) remove(w http.ResponseWriter, r *http.Request, user *auth.User) {
 	id, ok := pathID(w, r)
 	if !ok {
 		return
@@ -227,6 +235,9 @@ func (h *Handler) remove(w http.ResponseWriter, r *http.Request, _ *auth.User) {
 	if err != nil {
 		httpx.Error(w, http.StatusInternalServerError, "database error")
 		return
+	}
+	if user != nil {
+		audit.Write(h.audit, r, user.ID, user.Username, "delete_storage_region", "", "success", "")
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
