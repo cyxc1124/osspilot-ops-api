@@ -147,7 +147,8 @@ func (h *Handler) projectTenant(ctx context.Context, out publicSettings) {
 		"version_cleanup_enabled":   boolStr(out.VersionCleanupEnabled),
 		"multipart_stale_days":      strconv.Itoa(out.MultipartStaleDays),
 		"multipart_cleanup_enabled": boolStr(out.MultipartCleanupEnabled),
-		"max_upload_bytes":          strconv.FormatInt(out.MaxUploadBytes, 10),
+		"max_upload_bytes":                 strconv.FormatInt(out.MaxUploadBytes, 10),
+		"default_upload_presign_expires": strconv.Itoa(out.DefaultUploadPresignExpires),
 	}
 	if out.OfficeURL != nil && strings.TrimSpace(*out.OfficeURL) != "" {
 		settings["office_url"] = strings.TrimSpace(*out.OfficeURL)
