@@ -39,16 +39,17 @@ func (h *Handler) Register(mux *http.ServeMux) {
 }
 
 type createRequest struct {
-	Username         string  `json:"username"`
-	Password         string  `json:"password"`
-	DisplayName      *string `json:"display_name"`
-	Email            *string `json:"email"`
-	Phone            *string `json:"phone"`
-	QuotaBytes       *int64  `json:"quota_bytes"`
-	ObjectLimit      *int64  `json:"object_limit"`
-	DailyUploadBytes *int64  `json:"daily_upload_bytes"`
-	BucketLimit      *int64  `json:"bucket_limit"`
-	StorageRegionID  *int64  `json:"storage_region_id"`
+	Username           string  `json:"username"`
+	Password           string  `json:"password"`
+	DisplayName        *string `json:"display_name"`
+	Email              *string `json:"email"`
+	Phone              *string `json:"phone"`
+	QuotaBytes         *int64  `json:"quota_bytes"`
+	ObjectLimit        *int64  `json:"object_limit"`
+	DailyUploadBytes   *int64  `json:"daily_upload_bytes"`
+	BucketLimit        *int64  `json:"bucket_limit"`
+	StorageRegionID    *int64  `json:"storage_region_id"`
+	MustChangePassword *bool   `json:"must_change_password"`
 }
 
 type updateRequest struct {
@@ -137,7 +138,8 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request, user *auth.User
 		httpx.Error(w, http.StatusInternalServerError, "hash error")
 		return
 	}
-	u, err := h.store.Insert(r.Context(), username, hash, emptyToNil(req.DisplayName), emptyToNil(req.Email), emptyToNil(req.Phone), req.QuotaBytes, req.ObjectLimit, req.DailyUploadBytes, req.BucketLimit, req.StorageRegionID, time.Now())
+	must := boolOr(req.MustChangePassword, true)
+	u, err := h.store.Insert(r.Context(), username, hash, emptyToNil(req.DisplayName), emptyToNil(req.Email), emptyToNil(req.Phone), req.QuotaBytes, req.ObjectLimit, req.DailyUploadBytes, req.BucketLimit, req.StorageRegionID, must, time.Now())
 	if errors.Is(err, ErrConflict) {
 		httpx.Error(w, http.StatusConflict, "Username already exists")
 		return
@@ -146,7 +148,6 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request, user *auth.User
 		httpx.Error(w, http.StatusInternalServerError, "database error")
 		return
 	}
-	must := true
 	if err := h.pushAccount(r, *u, &must); err != nil {
 		httpx.Error(w, http.StatusBadGateway, "tenant projection failed")
 		return
@@ -420,6 +421,13 @@ func toResponse(u Record) response {
 		CreatedAt:        u.CreatedAt.UTC().Format(time.RFC3339),
 		UpdatedAt:        u.UpdatedAt.UTC().Format(time.RFC3339),
 	}
+}
+
+func boolOr(v *bool, fallback bool) bool {
+	if v == nil {
+		return fallback
+	}
+	return *v
 }
 
 func emptyToNil(s *string) *string {

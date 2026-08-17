@@ -34,12 +34,13 @@ func (h *Handler) Register(mux *http.ServeMux) {
 }
 
 type createRequest struct {
-	Username    string   `json:"username"`
-	Password    string   `json:"password"`
-	DisplayName *string  `json:"display_name"`
-	Email       *string  `json:"email"`
-	Phone       *string  `json:"phone"`
-	OpsRoles    []string `json:"ops_roles"`
+	Username           string   `json:"username"`
+	Password           string   `json:"password"`
+	DisplayName        *string  `json:"display_name"`
+	Email              *string  `json:"email"`
+	Phone              *string  `json:"phone"`
+	OpsRoles           []string `json:"ops_roles"`
+	MustChangePassword *bool    `json:"must_change_password"`
 }
 
 type updateRequest struct {
@@ -117,7 +118,7 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request, user *auth.User
 		httpx.Error(w, http.StatusInternalServerError, "hash error")
 		return
 	}
-	u, err := h.store.Insert(r.Context(), username, hash, emptyToNil(req.DisplayName), emptyToNil(req.Email), emptyToNil(req.Phone), roles, time.Now())
+	u, err := h.store.Insert(r.Context(), username, hash, emptyToNil(req.DisplayName), emptyToNil(req.Email), emptyToNil(req.Phone), roles, boolOr(req.MustChangePassword, false), time.Now())
 	if errors.Is(err, ErrConflict) {
 		httpx.Error(w, http.StatusConflict, "Username already exists")
 		return
@@ -319,6 +320,13 @@ func toResponse(u Record) response {
 		CreatedAt:   u.CreatedAt.UTC().Format(time.RFC3339),
 		UpdatedAt:   u.UpdatedAt.UTC().Format(time.RFC3339),
 	}
+}
+
+func boolOr(v *bool, fallback bool) bool {
+	if v == nil {
+		return fallback
+	}
+	return *v
 }
 
 func emptyToNil(s *string) *string {

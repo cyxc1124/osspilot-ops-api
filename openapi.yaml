@@ -53,7 +53,7 @@ paths:
         "403":
           description: not platform_admin
     post:
-      summary: Create ops user
+      summary: Create ops user; optional must_change_password (default false)
       responses:
         "201":
           description: created
@@ -131,7 +131,7 @@ paths:
         "200":
           description: items and total
     post:
-      summary: Create tenant account
+      summary: Create tenant account; optional must_change_password (default true)
       responses:
         "201":
           description: created

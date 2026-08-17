@@ -118,15 +118,15 @@ func (s *Store) GetByID(ctx context.Context, id int64) (*Record, error) {
 	return &u, nil
 }
 
-func (s *Store) Insert(ctx context.Context, username, hash string, displayName, email, phone *string, quota, objects, daily, buckets, regionID *int64, at time.Time) (*Record, error) {
+func (s *Store) Insert(ctx context.Context, username, hash string, displayName, email, phone *string, quota, objects, daily, buckets, regionID *int64, mustChange bool, at time.Time) (*Record, error) {
 	var id int64
 	err := s.pool.QueryRow(ctx, `
 		INSERT INTO tenant_accounts (
 			username, password_hash, display_name, email, phone, status,
 			quota_bytes, object_limit, daily_upload_bytes, bucket_limit, storage_region_id,
 			must_change_password, created_at, updated_at
-		) VALUES ($1,$2,$3,$4,$5,'active',$6,$7,$8,$9,$10,true,$11,$11)
-		RETURNING id`, username, hash, displayName, email, phone, quota, objects, daily, buckets, regionID, at).Scan(&id)
+		) VALUES ($1,$2,$3,$4,$5,'active',$6,$7,$8,$9,$10,$11,$12,$12)
+		RETURNING id`, username, hash, displayName, email, phone, quota, objects, daily, buckets, regionID, mustChange, at).Scan(&id)
 	if isUnique(err) {
 		return nil, ErrConflict
 	}
