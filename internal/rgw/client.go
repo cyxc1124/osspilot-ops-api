@@ -12,7 +12,10 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 )
 
-var ErrNotConfigured = errors.New("S3/RGW is not configured")
+var (
+	ErrNotConfigured = errors.New("S3/RGW is not configured")
+	ErrNoBucket      = errors.New("bucket not found")
+)
 
 type Client struct {
 	s3 *s3.Client
@@ -48,6 +51,20 @@ func New(endpoint, accessKey, secretKey string) *Client {
 type BucketInfo struct {
 	Name         string
 	CreationDate *time.Time
+}
+
+func (c *Client) HeadBucket(ctx context.Context, bucket string) error {
+	if c == nil {
+		return ErrNotConfigured
+	}
+	_, err := c.s3.HeadBucket(ctx, &s3.HeadBucketInput{Bucket: aws.String(bucket)})
+	if err == nil {
+		return nil
+	}
+	if strings.Contains(err.Error(), "NotFound") || strings.Contains(err.Error(), "NoSuchBucket") {
+		return ErrNoBucket
+	}
+	return err
 }
 
 func (c *Client) ListBuckets(ctx context.Context) ([]BucketInfo, error) {

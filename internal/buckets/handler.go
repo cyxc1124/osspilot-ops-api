@@ -1,15 +1,18 @@
 package buckets
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"strings"
 	"time"
 
+	"github.com/cyxc1124/osspilot-ops-api/internal/audit"
 	"github.com/cyxc1124/osspilot-ops-api/internal/auth"
 	"github.com/cyxc1124/osspilot-ops-api/internal/httpx"
 	"github.com/cyxc1124/osspilot-ops-api/internal/project"
 	"github.com/cyxc1124/osspilot-ops-api/internal/regions"
+	"github.com/cyxc1124/osspilot-ops-api/internal/rgw"
 	"github.com/cyxc1124/osspilot-ops-api/internal/settings"
 )
 
@@ -18,11 +21,12 @@ type Handler struct {
 	regions  *regions.Store
 	settings *settings.Handler
 	project  *project.Client
+	audit    *audit.Store
 	protect  func(auth.UserHandler) http.HandlerFunc
 }
 
-func NewHandler(store *Store, regions *regions.Store, settingsH *settings.Handler, proj *project.Client, protect func(auth.UserHandler) http.HandlerFunc) *Handler {
-	return &Handler{store: store, regions: regions, settings: settingsH, project: proj, protect: protect}
+func NewHandler(store *Store, regions *regions.Store, settingsH *settings.Handler, proj *project.Client, auditStore *audit.Store, protect func(auth.UserHandler) http.HandlerFunc) *Handler {
+	return &Handler{store: store, regions: regions, settings: settingsH, project: proj, audit: auditStore, protect: protect}
 }
 
 func (h *Handler) Register(mux *http.ServeMux) {
@@ -101,19 +105,18 @@ func (h *Handler) list(w http.ResponseWriter, r *http.Request, _ *auth.User) {
 			}
 		}
 	}
-	now := time.Now().UTC().Format(time.RFC3339)
 	out := make([]item, 0, len(items))
 	for _, b := range items {
 		it := toItem(b)
 		if u, ok := usage[b.BucketName]; ok {
-			attachUsage(&it, u, now)
+			attachUsage(&it, u)
 		}
 		out = append(out, it)
 	}
 	httpx.JSON(w, http.StatusOK, map[string]any{"items": out, "total": len(out)})
 }
 
-func (h *Handler) create(w http.ResponseWriter, r *http.Request, _ *auth.User) {
+func (h *Handler) create(w http.ResponseWriter, r *http.Request, user *auth.User) {
 	if h.store == nil {
 		httpx.Error(w, http.StatusServiceUnavailable, "database is not configured")
 		return
@@ -123,7 +126,7 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request, _ *auth.User) {
 		httpx.Error(w, http.StatusBadRequest, "invalid json")
 		return
 	}
-	b, err := h.register(r, strings.TrimSpace(req.BucketName), emptyToNil(req.DisplayName), req.StorageRegionID, req.QuotaBytes, req.ObjectLimit)
+	b, err := h.register(r, user, strings.TrimSpace(req.BucketName), emptyToNil(req.DisplayName), req.StorageRegionID, req.QuotaBytes, req.ObjectLimit)
 	if err != nil {
 		writeRegErr(w, err)
 		return
@@ -131,7 +134,7 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request, _ *auth.User) {
 	httpx.JSON(w, http.StatusCreated, toDetail(*b))
 }
 
-func (h *Handler) importBatch(w http.ResponseWriter, r *http.Request, _ *auth.User) {
+func (h *Handler) importBatch(w http.ResponseWriter, r *http.Request, user *auth.User) {
 	if h.store == nil {
 		httpx.Error(w, http.StatusServiceUnavailable, "database is not configured")
 		return
@@ -148,7 +151,7 @@ func (h *Handler) importBatch(w http.ResponseWriter, r *http.Request, _ *auth.Us
 	imported := make([]detail, 0, len(req.BucketNames))
 	failed := make([]map[string]string, 0)
 	for _, raw := range req.BucketNames {
-		b, err := h.register(r, strings.TrimSpace(raw), nil, req.StorageRegionID, nil, nil)
+		b, err := h.register(r, user, strings.TrimSpace(raw), nil, req.StorageRegionID, nil, nil)
 		if err != nil {
 			failed = append(failed, map[string]string{"bucket_name": strings.TrimSpace(raw), "error": err.Error()})
 			continue
@@ -158,18 +161,66 @@ func (h *Handler) importBatch(w http.ResponseWriter, r *http.Request, _ *auth.Us
 	httpx.JSON(w, http.StatusOK, map[string]any{"imported": imported, "failed": failed})
 }
 
-func (h *Handler) register(r *http.Request, name string, display *string, regionID, quota, objects *int64) (*Bucket, error) {
+func (h *Handler) register(r *http.Request, user *auth.User, name string, display *string, regionID, quota, objects *int64) (*Bucket, error) {
 	if err := validateName(name); err != nil {
 		return nil, err
 	}
 	if err := h.checkRegion(r, regionID); err != nil {
 		return nil, err
 	}
+	cli, err := h.liveS3(r.Context())
+	if err != nil {
+		return nil, err
+	}
+	if err := cli.HeadBucket(r.Context(), name); err != nil {
+		if errors.Is(err, rgw.ErrNoBucket) {
+			miss := errNoBucket{name}
+			h.auditRegister(r, user, name, "failure", miss.Error())
+			return nil, miss
+		}
+		h.auditRegister(r, user, name, "failure", err.Error())
+		return nil, errS3
+	}
 	b, err := h.store.Insert(r.Context(), name, display, regionID, quota, objects, time.Now())
 	if err != nil && !errors.Is(err, ErrConflict) {
 		return nil, errors.New("database error")
 	}
-	return b, err
+	if errors.Is(err, ErrConflict) {
+		h.auditRegister(r, user, name, "failure", "database conflict")
+		return nil, err
+	}
+	h.auditRegister(r, user, name, "success", "")
+	return b, nil
+}
+
+func (h *Handler) liveS3(ctx context.Context) (*rgw.Client, error) {
+	if h.settings == nil {
+		return nil, errS3Unconfigured
+	}
+	rt, err := h.settings.Runtime(ctx)
+	if err != nil {
+		return nil, errors.New("database error")
+	}
+	cli := rgw.New(rt.S3Endpoint, rt.RGWAccessKey, rt.RGWSecretKey)
+	if cli == nil {
+		return nil, errS3Unconfigured
+	}
+	return cli, nil
+}
+
+func (h *Handler) auditRegister(r *http.Request, user *auth.User, name, status, errMsg string) {
+	if h.audit == nil || user == nil {
+		return
+	}
+	var em *string
+	if errMsg != "" {
+		em = &errMsg
+	}
+	_ = h.audit.Insert(r.Context(), audit.Entry{
+		UserID: &user.ID, Username: &user.Username, BucketName: &name,
+		Action: "bucket_register", SourceIP: audit.ClientIP(r), UserAgent: audit.UserAgent(r),
+		Status: status, ErrorMessage: em,
+	})
 }
 
 func (h *Handler) checkRegion(r *http.Request, id *int64) error {
@@ -192,14 +243,29 @@ func (h *Handler) checkRegion(r *http.Request, id *int64) error {
 	return nil
 }
 
-var errRegion = errors.New("Storage region not found")
+var (
+	errRegion         = errors.New("Storage region not found")
+	errS3Unconfigured = errors.New("S3/RGW is not configured")
+	errS3             = errors.New("storage error")
+)
+
+type errNoBucket struct{ name string }
+
+func (e errNoBucket) Error() string { return "S3 bucket '" + e.name + "' not found" }
 
 func writeRegErr(w http.ResponseWriter, err error) {
+	var missing errNoBucket
 	switch {
 	case errors.Is(err, ErrConflict):
 		httpx.Error(w, http.StatusConflict, "Bucket already registered")
 	case err.Error() == "database error":
 		httpx.Error(w, http.StatusInternalServerError, "database error")
+	case errors.Is(err, errS3Unconfigured):
+		httpx.Error(w, http.StatusServiceUnavailable, err.Error())
+	case errors.Is(err, errS3):
+		httpx.Error(w, http.StatusBadGateway, err.Error())
+	case errors.As(err, &missing):
+		httpx.Error(w, http.StatusNotFound, err.Error())
 	case errors.Is(err, errRegion) || err.Error() == "Storage region is not active":
 		httpx.Error(w, http.StatusUnprocessableEntity, err.Error())
 	default:
@@ -218,14 +284,12 @@ func emptyToNil(s *string) *string {
 	return &t
 }
 
-func attachUsage(it *item, u project.UsageBucket, now string) {
+func attachUsage(it *item, u project.UsageBucket) {
 	it.UsedBytes = u.UsedBytes
 	it.ObjectCount = u.ObjectCount
 	if u.CollectedAt != nil && *u.CollectedAt != "" {
 		it.CollectedAt = u.CollectedAt
-		return
 	}
-	it.CollectedAt = &now
 }
 
 func toItem(b Bucket) item {
