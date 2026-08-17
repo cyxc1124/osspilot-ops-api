@@ -37,7 +37,7 @@ go run ./cmd/reset-password -u admin -p 'new-password'   # 或 OPS_RESET_PASSWOR
 
 区域 `tenant_count` 按绑定账号计数；有绑定时不能删区域。RGW 密钥明文存库、接口返回打码；`********` 表示不改密钥。
 
-契约见 `openapi.yaml`。无 `DATABASE_URL` 时 healthz 仍可用，鉴权接口返回 503。Ceph 管理地址来自设置或 `CEPH_MGMT_API_URL`；本地可用 `go run ./cmd/ceph-mgmt`（默认 `:8082`）当桩。
+契约见 `openapi.yaml`。无 `DATABASE_URL` 时 healthz 仍可用，鉴权接口返回 503。Ceph 管理地址来自设置或 `CEPH_MGMT_API_URL`。同仓 `go run ./cmd/ceph-mgmt`（默认 `:8082`）可当管理端：`CEPH_MGMT_BACKEND=mock`（默认）或 `ceph`（调本机 `ceph` CLI，`CEPH_CONF` / `CEPH_CLUSTER` 可选）。镜像里没有 ceph 二进制；真集群把该进程跑在有 CLI 的节点，或继续把设置指到外接服务。
 
 ## 许可
 
@@ -45,4 +45,4 @@ AGPL-3.0-only
 
 ## 镜像
 
-`Dockerfile` 产出同一镜像：`command` 为 `api`（默认）、`migrate`、`reset-password`。入口不自动 migrate。忘记运营密码时：`reset-password -u admin`（`--password` / `OPS_RESET_PASSWORD` / 非 TTY 的 stdin）。生命周期 worker 见 [osspilot-ops-worker](https://github.com/cyxc1124/osspilot-ops-worker)。
+`Dockerfile` 产出同一镜像：`command` 为 `api`（默认）、`migrate`、`reset-password`、`ceph-mgmt`。入口不自动 migrate。忘记运营密码时：`reset-password -u admin`（`--password` / `OPS_RESET_PASSWORD` / 非 TTY 的 stdin）。生命周期 worker 见 [osspilot-ops-worker](https://github.com/cyxc1124/osspilot-ops-worker)。

@@ -8,5 +8,6 @@ case "$cmd" in
   api) exec /app/api "$@" ;;
   migrate) exec /app/migrate "$@" ;;
   reset-password) exec /app/reset-password "$@" ;;
+  ceph-mgmt) exec /app/ceph-mgmt "$@" ;;
   *) exec "$cmd" "$@" ;;
 esac
