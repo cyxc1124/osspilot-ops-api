@@ -3,6 +3,7 @@ package audit
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"strings"
 	"time"
 
@@ -55,6 +56,28 @@ func scan(row interface{ Scan(dest ...any) error }) (Entry, error) {
 		&e.Action, &e.SourceIP, &e.UserAgent, &e.Status, &e.ErrorMessage, &e.CreatedAt)
 	e.ErrorMessage = sanitizeError(e.Action, e.ErrorMessage)
 	return e, err
+}
+
+func Write(s *Store, r *http.Request, userID int64, username, action, bucket, status, errMsg string) {
+	if s == nil || action == "" {
+		return
+	}
+	var em, bkt *string
+	if errMsg != "" {
+		em = &errMsg
+	}
+	if bucket != "" {
+		bkt = &bucket
+	}
+	ctx := context.Background()
+	if r != nil {
+		ctx = r.Context()
+	}
+	_ = s.Insert(ctx, Entry{
+		UserID: &userID, Username: &username, BucketName: bkt,
+		Action: action, SourceIP: ClientIP(r), UserAgent: UserAgent(r),
+		Status: status, ErrorMessage: em,
+	})
 }
 
 func (s *Store) Insert(ctx context.Context, e Entry) error {

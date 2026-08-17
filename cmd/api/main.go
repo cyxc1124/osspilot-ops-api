@@ -160,11 +160,11 @@ func main() {
 		ObjectHTTPSDomain: cfg.ObjectHTTPSDomain,
 		OfficeURL:         cfg.OfficeURL,
 		CephMgmtAPIURL:    cfg.CephMgmtAPIURL,
-	}, proj)
+	}, proj, auditStore)
 	accountsH := accounts.NewHandler(accountStore, regionStore, proj, authH.RequireAdmin)
 	bucketsH := buckets.NewHandler(bucketStore, regionStore, settingsH, proj, auditStore, authH.RequireAdmin)
 	grantsH := grants.NewHandler(grantStore, accountStore, bucketStore, proj, authH.RequireAdmin)
-	lifeH := lifecycle.NewHandler(lifeStore, bucketStore, authH.RequireAdmin)
+	lifeH := lifecycle.NewHandler(lifeStore, bucketStore, auditStore, authH.RequireAdmin)
 	cephH := ceph.NewHandler(settingsH, authH.RequireUser, authH.RequireAdmin)
 	auditH := audit.NewHandler(auditStore, authH.RequireUser, proj, accountStore)
 	statsH := stats.NewHandler(statsStore, grantStore, settingsH, proj, authH.RequireUser)

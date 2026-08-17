@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cyxc1124/osspilot-ops-api/internal/audit"
 	"github.com/cyxc1124/osspilot-ops-api/internal/auth"
 	"github.com/cyxc1124/osspilot-ops-api/internal/httpx"
 	"github.com/cyxc1124/osspilot-ops-api/internal/project"
@@ -110,7 +111,7 @@ func (h *Handler) getPolicy(w http.ResponseWriter, r *http.Request, _ *auth.User
 	})
 }
 
-func (h *Handler) putPolicy(w http.ResponseWriter, r *http.Request, _ *auth.User) {
+func (h *Handler) putPolicy(w http.ResponseWriter, r *http.Request, user *auth.User) {
 	b, cli, ok := h.loadBucketS3(w, r)
 	if !ok {
 		return
@@ -127,8 +128,14 @@ func (h *Handler) putPolicy(w http.ResponseWriter, r *http.Request, _ *auth.User
 		return
 	}
 	if err := cli.PutBucketPolicy(r.Context(), b.BucketName, req.Policy); err != nil {
+		if user != nil {
+			audit.Write(h.audit, r, user.ID, user.Username, "modify_bucket_policy", b.BucketName, "failure", err.Error())
+		}
 		httpx.Error(w, http.StatusBadGateway, "storage error")
 		return
+	}
+	if user != nil {
+		audit.Write(h.audit, r, user.ID, user.Username, "modify_bucket_policy", b.BucketName, "success", "")
 	}
 	tenantID, _ := h.store.FirstAccountID(r.Context(), b.ID)
 	httpx.JSON(w, http.StatusOK, map[string]any{
@@ -137,14 +144,20 @@ func (h *Handler) putPolicy(w http.ResponseWriter, r *http.Request, _ *auth.User
 	})
 }
 
-func (h *Handler) deletePolicy(w http.ResponseWriter, r *http.Request, _ *auth.User) {
+func (h *Handler) deletePolicy(w http.ResponseWriter, r *http.Request, user *auth.User) {
 	b, cli, ok := h.loadBucketS3(w, r)
 	if !ok {
 		return
 	}
 	if err := cli.DeleteBucketPolicy(r.Context(), b.BucketName); err != nil {
+		if user != nil {
+			audit.Write(h.audit, r, user.ID, user.Username, "modify_bucket_policy", b.BucketName, "failure", err.Error())
+		}
 		httpx.Error(w, http.StatusBadGateway, "storage error")
 		return
+	}
+	if user != nil {
+		audit.Write(h.audit, r, user.ID, user.Username, "modify_bucket_policy", b.BucketName, "success", "")
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
