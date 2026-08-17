@@ -14,9 +14,11 @@ import (
 var ErrConflict = errors.New("username exists")
 
 type RegionBrief struct {
-	ID   int64
-	Code string
-	Name string
+	ID           int64
+	Code         string
+	Name         string
+	S3Endpoint   string
+	S3RegionName string
 }
 
 type Record struct {
@@ -48,22 +50,29 @@ func NewStore(pool *pgxpool.Pool) *Store {
 const cols = `a.id, a.username, a.display_name, a.email, a.phone, a.status,
 	a.quota_bytes, a.object_limit, a.daily_upload_bytes, a.bucket_limit,
 	a.storage_region_id, a.last_login_at, a.created_at, a.updated_at,
-	r.code, r.name`
+	r.code, r.name, r.s3_endpoint, r.s3_region_name`
 
 func scan(row interface{ Scan(dest ...any) error }) (Record, error) {
 	var u Record
-	var code, name *string
+	var code, name, endpoint, region *string
 	err := row.Scan(
 		&u.ID, &u.Username, &u.DisplayName, &u.Email, &u.Phone, &u.Status,
 		&u.QuotaBytes, &u.ObjectLimit, &u.DailyUploadBytes, &u.BucketLimit,
 		&u.StorageRegionID, &u.LastLoginAt, &u.CreatedAt, &u.UpdatedAt,
-		&code, &name,
+		&code, &name, &endpoint, &region,
 	)
 	if err != nil {
 		return u, err
 	}
 	if u.StorageRegionID != nil && code != nil && name != nil {
-		u.StorageRegion = &RegionBrief{ID: *u.StorageRegionID, Code: *code, Name: *name}
+		brief := RegionBrief{ID: *u.StorageRegionID, Code: *code, Name: *name}
+		if endpoint != nil {
+			brief.S3Endpoint = *endpoint
+		}
+		if region != nil {
+			brief.S3RegionName = *region
+		}
+		u.StorageRegion = &brief
 	}
 	return u, nil
 }

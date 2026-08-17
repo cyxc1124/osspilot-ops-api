@@ -319,7 +319,7 @@ func (h *Handler) pushAccount(r *http.Request, u Record, must *bool) error {
 	if err != nil {
 		return err
 	}
-	return h.project.UpsertAccount(r.Context(), project.Account{
+	acct := project.Account{
 		Username:           u.Username,
 		PasswordHash:       hash,
 		DisplayName:        u.DisplayName,
@@ -330,7 +330,16 @@ func (h *Handler) pushAccount(r *http.Request, u Record, must *bool) error {
 		QuotaBytes:         u.QuotaBytes,
 		ObjectLimit:        u.ObjectLimit,
 		DailyUploadBytes:   u.DailyUploadBytes,
-	})
+		StorageRegionID:    u.StorageRegionID,
+	}
+	if u.StorageRegion != nil {
+		code, name, ep, reg := u.StorageRegion.Code, u.StorageRegion.Name, u.StorageRegion.S3Endpoint, u.StorageRegion.S3RegionName
+		acct.StorageRegionCode = &code
+		acct.StorageRegionName = &name
+		acct.S3Endpoint = &ep
+		acct.S3RegionName = &reg
+	}
+	return h.project.UpsertAccount(r.Context(), acct)
 }
 
 func (h *Handler) load(w http.ResponseWriter, r *http.Request) *Record {
