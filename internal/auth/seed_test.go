@@ -10,3 +10,18 @@ func TestSeedAdminHash(t *testing.T) {
 		t.Fatal("seed hash must verify password admin")
 	}
 }
+
+func TestCheckCreatePassword(t *testing.T) {
+	if got := CheckCreatePassword("short", "", true); got == "" {
+		t.Fatal("short password")
+	}
+	if got := CheckCreatePassword("longenough", "", true); got != "" {
+		t.Fatal(got)
+	}
+	if got := CheckCreatePassword("longenough", "otherpass", false); got != "passwords do not match" {
+		t.Fatal(got)
+	}
+	if got := CheckCreatePassword("longenough", "longenough", false); got != "" {
+		t.Fatal(got)
+	}
+}

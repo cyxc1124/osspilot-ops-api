@@ -41,6 +41,7 @@ type createRequest struct {
 	Phone              *string  `json:"phone"`
 	OpsRoles           []string `json:"ops_roles"`
 	MustChangePassword *bool    `json:"must_change_password"`
+	ConfirmPassword    string   `json:"confirm_password"`
 }
 
 type updateRequest struct {
@@ -104,8 +105,9 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request, user *auth.User
 		httpx.Error(w, http.StatusBadRequest, "username must be at most 64 characters")
 		return
 	}
-	if len(req.Password) < 8 || len(req.Password) > 128 {
-		httpx.Error(w, http.StatusBadRequest, "password must be 8-128 characters")
+	must := boolOr(req.MustChangePassword, true)
+	if msg := auth.CheckCreatePassword(req.Password, req.ConfirmPassword, must); msg != "" {
+		httpx.Error(w, http.StatusBadRequest, msg)
 		return
 	}
 	roles, err := normalizeRoles(req.OpsRoles)
@@ -118,7 +120,7 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request, user *auth.User
 		httpx.Error(w, http.StatusInternalServerError, "hash error")
 		return
 	}
-	u, err := h.store.Insert(r.Context(), username, hash, emptyToNil(req.DisplayName), emptyToNil(req.Email), emptyToNil(req.Phone), roles, boolOr(req.MustChangePassword, false), time.Now())
+	u, err := h.store.Insert(r.Context(), username, hash, emptyToNil(req.DisplayName), emptyToNil(req.Email), emptyToNil(req.Phone), roles, must, time.Now())
 	if errors.Is(err, ErrConflict) {
 		httpx.Error(w, http.StatusConflict, "Username already exists")
 		return

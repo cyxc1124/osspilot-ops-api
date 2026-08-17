@@ -50,6 +50,7 @@ type createRequest struct {
 	BucketLimit        *int64  `json:"bucket_limit"`
 	StorageRegionID    *int64  `json:"storage_region_id"`
 	MustChangePassword *bool   `json:"must_change_password"`
+	ConfirmPassword    string  `json:"confirm_password"`
 }
 
 type updateRequest struct {
@@ -125,8 +126,9 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request, user *auth.User
 		httpx.Error(w, http.StatusBadRequest, "username is required")
 		return
 	}
-	if len(req.Password) < 8 || len(req.Password) > 128 {
-		httpx.Error(w, http.StatusBadRequest, "password must be 8-128 characters")
+	must := boolOr(req.MustChangePassword, true)
+	if msg := auth.CheckCreatePassword(req.Password, req.ConfirmPassword, must); msg != "" {
+		httpx.Error(w, http.StatusBadRequest, msg)
 		return
 	}
 	if err := h.checkRegion(r, req.StorageRegionID); err != nil {
@@ -138,7 +140,6 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request, user *auth.User
 		httpx.Error(w, http.StatusInternalServerError, "hash error")
 		return
 	}
-	must := boolOr(req.MustChangePassword, true)
 	u, err := h.store.Insert(r.Context(), username, hash, emptyToNil(req.DisplayName), emptyToNil(req.Email), emptyToNil(req.Phone), req.QuotaBytes, req.ObjectLimit, req.DailyUploadBytes, req.BucketLimit, req.StorageRegionID, must, time.Now())
 	if errors.Is(err, ErrConflict) {
 		httpx.Error(w, http.StatusConflict, "Username already exists")
