@@ -517,6 +517,14 @@ paths:
           description: disabled
         "409":
           description: not approved
+  /api/about:
+    get:
+      summary: Running component versions and GitHub comparison
+      responses:
+        "200":
+          description: six service versions; update_available is null until the GitHub check finishes
+        "401":
+          description: missing or invalid token
   /api/file-locks/force-unlock:
     post:
       summary: Force release a tenant edit lock (platform_admin)
