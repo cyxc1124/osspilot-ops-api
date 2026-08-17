@@ -149,6 +149,11 @@ func (h *Handler) projectTenant(ctx context.Context, out publicSettings) {
 		"multipart_cleanup_enabled": boolStr(out.MultipartCleanupEnabled),
 		"max_upload_bytes":          strconv.FormatInt(out.MaxUploadBytes, 10),
 	}
+	if out.OfficeURL != nil && strings.TrimSpace(*out.OfficeURL) != "" {
+		settings["office_url"] = strings.TrimSpace(*out.OfficeURL)
+	} else {
+		settings["office_url"] = ""
+	}
 	if out.DownloadCDNURL != nil {
 		settings["download_cdn_url"] = *out.DownloadCDNURL
 	} else {
