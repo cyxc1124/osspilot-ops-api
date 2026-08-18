@@ -107,16 +107,16 @@ func (s *Store) GetByID(ctx context.Context, id int64) (*Record, error) {
 	return &u, nil
 }
 
-func (s *Store) Insert(ctx context.Context, username, hash string, displayName, email, phone *string, roles []string, at time.Time) (*Record, error) {
+func (s *Store) Insert(ctx context.Context, username, hash string, displayName, email, phone *string, roles []string, mustChange bool, at time.Time) (*Record, error) {
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return nil, err
 	}
 	defer tx.Rollback(ctx)
 	u, err := scan(tx.QueryRow(ctx, `
-		INSERT INTO ops_users (username, password_hash, display_name, email, phone, status, created_at, updated_at)
-		VALUES ($1,$2,$3,$4,$5,'active',$6,$6)
-		RETURNING `+cols, username, hash, displayName, email, phone, at))
+		INSERT INTO ops_users (username, password_hash, display_name, email, phone, status, must_change_password, created_at, updated_at)
+		VALUES ($1,$2,$3,$4,$5,'active',$6,$7,$7)
+		RETURNING `+cols, username, hash, displayName, email, phone, mustChange, at))
 	if isUnique(err) {
 		return nil, ErrConflict
 	}

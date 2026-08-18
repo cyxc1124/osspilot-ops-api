@@ -140,16 +140,16 @@ func (h *Handler) projectTenant(ctx context.Context, out publicSettings) {
 		return
 	}
 	settings := map[string]string{
-		"tenant_login_logo_text":    out.TenantLoginLogoText,
-		"tenant_login_title":        out.TenantLoginTitle,
-		"tenant_login_subtitle":     out.TenantLoginSubtitle,
-		"trash_retention_days":      strconv.Itoa(out.TrashRetentionDays),
-		"trash_cleanup_enabled":     boolStr(out.TrashCleanupEnabled),
-		"version_retention_days":    strconv.Itoa(out.VersionRetentionDays),
-		"version_cleanup_enabled":   boolStr(out.VersionCleanupEnabled),
-		"multipart_stale_days":      strconv.Itoa(out.MultipartStaleDays),
-		"multipart_cleanup_enabled": boolStr(out.MultipartCleanupEnabled),
-		"max_upload_bytes":                 strconv.FormatInt(out.MaxUploadBytes, 10),
+		"tenant_login_logo_text":         out.TenantLoginLogoText,
+		"tenant_login_title":             out.TenantLoginTitle,
+		"tenant_login_subtitle":          out.TenantLoginSubtitle,
+		"trash_retention_days":           strconv.Itoa(out.TrashRetentionDays),
+		"trash_cleanup_enabled":          boolStr(out.TrashCleanupEnabled),
+		"version_retention_days":         strconv.Itoa(out.VersionRetentionDays),
+		"version_cleanup_enabled":        boolStr(out.VersionCleanupEnabled),
+		"multipart_stale_days":           strconv.Itoa(out.MultipartStaleDays),
+		"multipart_cleanup_enabled":      boolStr(out.MultipartCleanupEnabled),
+		"max_upload_bytes":               strconv.FormatInt(out.MaxUploadBytes, 10),
 		"default_upload_presign_expires": strconv.Itoa(out.DefaultUploadPresignExpires),
 	}
 	if out.OfficeURL != nil && strings.TrimSpace(*out.OfficeURL) != "" {
