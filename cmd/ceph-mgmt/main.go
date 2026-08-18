@@ -8,9 +8,13 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/cyxc1124/osspilot-ops-api/internal/httpx"
+	"github.com/cyxc1124/osspilot-ops-api/internal/logx"
 )
 
 func main() {
+	logx.Setup("osspilot-ceph-mgmt")
 	addr := getenv("HTTP_ADDR", ":8082")
 	backend := strings.ToLower(getenv("CEPH_MGMT_BACKEND", "mock"))
 	var b Backend
@@ -74,7 +78,7 @@ func main() {
 	})
 
 	slog.Info("ceph-mgmt listen", "addr", addr, "backend", backend)
-	if err := http.ListenAndServe(addr, mux); err != nil {
+	if err := http.ListenAndServe(addr, httpx.AccessLog(mux)); err != nil {
 		slog.Error("server", "err", err)
 		os.Exit(1)
 	}
