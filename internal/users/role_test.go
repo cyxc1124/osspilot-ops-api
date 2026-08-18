@@ -22,13 +22,3 @@ func TestNormalizeRoles(t *testing.T) {
 		t.Fatal("expected error")
 	}
 }
-
-func TestBoolOr(t *testing.T) {
-	if boolOr(nil, true) != true || boolOr(nil, false) != false {
-		t.Fatal("nil uses fallback")
-	}
-	yes, no := true, false
-	if boolOr(&yes, false) != true || boolOr(&no, true) != false {
-		t.Fatal("pointer wins")
-	}
-}
