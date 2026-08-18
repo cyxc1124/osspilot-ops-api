@@ -21,6 +21,7 @@ import (
 	"github.com/cyxc1124/osspilot-ops-api/internal/grants"
 	"github.com/cyxc1124/osspilot-ops-api/internal/httpx"
 	"github.com/cyxc1124/osspilot-ops-api/internal/lifecycle"
+	"github.com/cyxc1124/osspilot-ops-api/internal/logx"
 	"github.com/cyxc1124/osspilot-ops-api/internal/project"
 	"github.com/cyxc1124/osspilot-ops-api/internal/regions"
 	"github.com/cyxc1124/osspilot-ops-api/internal/settings"
@@ -95,7 +96,7 @@ func newMux(h apiHandlers) http.Handler {
 	if h.filelocks != nil {
 		h.filelocks.Register(mux)
 	}
-	return httpx.CORS(mux)
+	return httpx.AccessLog(httpx.CORS(mux))
 }
 
 func healthz(w http.ResponseWriter, _ *http.Request) {
@@ -104,6 +105,7 @@ func healthz(w http.ResponseWriter, _ *http.Request) {
 }
 
 func main() {
+	logx.Setup("osspilot-ops-api")
 	cfg := config.Load()
 	if cfg.DefaultJWTUsed {
 		slog.Warn("JWT_SECRET unset; using development default")

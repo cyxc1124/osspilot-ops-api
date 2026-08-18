@@ -13,6 +13,8 @@ go run ./cmd/reset-password -l
 go run ./cmd/reset-password -u admin -p 'new-password'   # 或 OPS_RESET_PASSWORD / 管道 stdin
 ```
 
+日志走 stdout（`log/slog`）。`LOG_LEVEL=debug|info|warn|error`（默认 info），`LOG_FORMAT=text|json`（默认 text）。请求打一条 `http`（`/healthz` 只在 debug）。
+
 - `GET /healthz`
 - `POST /api/login`、`POST /api/logout`、`GET /api/me`、`POST /api/password/change`
 - `GET|POST /api/users`、`GET|PUT|DELETE /api/users/{user_id}`、`POST /api/users/{user_id}/password/reset`（仅 platform_admin）
